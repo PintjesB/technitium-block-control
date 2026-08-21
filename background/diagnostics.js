@@ -119,6 +119,16 @@ export function diagnosePageCorrelation({
   };
 }
 
+export function needsDnsOriginTrace(exactNodeResults = []) {
+  return exactNodeResults.some((result) =>
+    (result?.entries || []).some((entry) => {
+      const responseType = String(entry?.responseType || "").toLowerCase();
+      const rcode = String(entry?.rcode || entry?.RCODE || "").toLowerCase();
+      return responseType === "cached" && rcode === "serverfailure";
+    }),
+  );
+}
+
 export async function traceNonCachedDnsOrigin({
   fetchPage,
   maxPages = 20,
