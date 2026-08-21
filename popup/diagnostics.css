@@ -1,15 +1,371 @@
-.diagnosticsHelp {
-    margin-top: 6px;
+.debugSection {
+    padding-bottom: 4px;
 }
 
-.diagnosticsActions {
+.debugPanel {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--card);
+    overflow: hidden;
+}
+
+.debugPanelSummary {
     display: flex;
-    gap: 8px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 12px;
+    cursor: pointer;
+    font-weight: 650;
+    user-select: none;
+}
+
+.debugPanelSummary::marker {
+    color: var(--muted);
+}
+
+.debugSummaryHint {
+    min-width: 0;
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 400;
+    text-align: right;
+}
+
+.debugBody {
+    border-top: 1px solid var(--border);
+    padding: 10px;
+}
+
+.debugActions,
+.debugReportActions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
     align-items: center;
 }
 
+.debugReportActions {
+    margin-top: 10px;
+}
+
+.debugVisualState {
+    margin-top: 10px;
+}
+
+.debugPlaceholder {
+    padding: 10px;
+    border: 1px dashed var(--border);
+    border-radius: 10px;
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.debugDiagnosis {
+    margin-top: 10px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-left-width: 4px;
+    border-radius: 10px;
+    background: var(--soft);
+}
+
+.debugDiagnosis.status-ok {
+    border-left-color: #2f8f4e;
+}
+
+.debugDiagnosis.status-blocked {
+    border-left-color: #b42318;
+}
+
+.debugDiagnosis.status-warning {
+    border-left-color: #c87900;
+}
+
+.debugDiagnosis.status-error {
+    border-left-color: #b42318;
+}
+
+.debugDiagnosis.status-neutral {
+    border-left-color: #6b7280;
+}
+
+.debugDiagnosisTitle {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.debugDiagnosisDetail {
+    margin-top: 4px;
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 1.4;
+}
+
+.debugMetaLine {
+    margin-top: 5px;
+    color: var(--muted);
+    font-size: 10px;
+}
+
+.debugStages {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
+    margin-top: 9px;
+}
+
+.debugStage {
+    min-width: 0;
+    padding: 8px;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    background: var(--soft);
+}
+
+.debugStageHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+}
+
+.debugStageLabel {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    gap: 6px;
+    color: var(--muted);
+    font-size: 10px;
+    font-weight: 650;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.debugDot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex: 0 0 auto;
+    background: #6b7280;
+}
+
+.status-ok .debugDot {
+    background: #2f8f4e;
+}
+
+.status-blocked .debugDot,
+.status-error .debugDot {
+    background: #b42318;
+}
+
+.status-warning .debugDot {
+    background: #c87900;
+}
+
+.debugStageTime {
+    color: var(--muted);
+    font-size: 9px;
+    white-space: nowrap;
+}
+
+.debugStageValue {
+    margin-top: 5px;
+    font-size: 12px;
+    font-weight: 650;
+    overflow-wrap: anywhere;
+}
+
+.debugStageDetail {
+    margin-top: 2px;
+    color: var(--muted);
+    font-size: 10px;
+    line-height: 1.3;
+    overflow-wrap: anywhere;
+}
+
+.debugSubsection {
+    margin-top: 10px;
+    padding-top: 9px;
+    border-top: 1px solid var(--border);
+}
+
+.debugSubheading {
+    margin-bottom: 6px;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.debugDnsRecords {
+    display: grid;
+    gap: 6px;
+}
+
+.debugDnsRecord {
+    display: grid;
+    grid-template-columns: 54px minmax(0, 1fr);
+    gap: 7px;
+    align-items: start;
+    padding: 7px 8px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--soft);
+}
+
+.debugQtype {
+    display: inline-flex;
+    justify-content: center;
+    padding: 2px 6px;
+    border: 1px solid var(--type-border);
+    border-radius: 999px;
+    background: var(--type-bg);
+    color: var(--type-text);
+    font-size: 10px;
+    font-weight: 700;
+}
+
+.debugDnsChain {
+    min-width: 0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 10px;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+}
+
+.debugDnsAnswer {
+    margin-top: 3px;
+    color: var(--muted);
+    font-family: inherit;
+    font-size: 9px;
+}
+
+.debugEnvironment {
+    display: grid;
+    gap: 5px;
+}
+
+.debugEnvRow {
+    display: grid;
+    grid-template-columns: 120px minmax(0, 1fr);
+    gap: 8px;
+    font-size: 10px;
+}
+
+.debugEnvLabel {
+    color: var(--muted);
+}
+
+.debugEnvValue {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.debugCause {
+    padding: 7px 8px;
+    border-radius: 8px;
+    background: var(--soft);
+    font-size: 10px;
+    line-height: 1.4;
+}
+
+.debugCause strong {
+    display: block;
+    margin-bottom: 2px;
+    font-size: 11px;
+}
+
+.debugEvidence {
+    margin: 7px 0 0 17px;
+    padding: 0;
+    color: var(--muted);
+    font-size: 10px;
+    line-height: 1.45;
+}
+
+.debugHelp {
+    margin-bottom: 7px;
+}
+
+.deepDnsResults {
+    display: grid;
+    gap: 8px;
+}
+
+.deepDnsQtype {
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    overflow: hidden;
+}
+
+.deepDnsQtypeTitle {
+    padding: 6px 8px;
+    background: var(--soft);
+    border-bottom: 1px solid var(--border);
+    font-size: 10px;
+    font-weight: 700;
+}
+
+.deepDnsRows {
+    display: grid;
+}
+
+.deepDnsRow {
+    display: grid;
+    grid-template-columns: minmax(0, 1.25fr) 66px minmax(0, 1fr);
+    gap: 6px;
+    align-items: center;
+    padding: 6px 8px;
+    border-top: 1px solid var(--border);
+    font-size: 9px;
+}
+
+.deepDnsRow:first-child {
+    border-top: 0;
+}
+
+.deepDnsResolver {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.deepDnsRcode {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-weight: 650;
+}
+
+.deepDnsAnswer {
+    min-width: 0;
+    color: var(--muted);
+    overflow-wrap: anywhere;
+}
+
+.deepDnsStatus-ok .deepDnsRcode {
+    color: #2f8f4e;
+}
+
+.deepDnsStatus-warning .deepDnsRcode,
+.deepDnsStatus-error .deepDnsRcode {
+    color: #b42318;
+}
+
+.rawDebugDetails {
+    margin-top: 9px;
+    border-top: 1px solid var(--border);
+    padding-top: 8px;
+}
+
+.rawDebugDetails > summary {
+    cursor: pointer;
+    color: var(--muted);
+    font-size: 10px;
+    user-select: none;
+}
+
 .diagnosticsOutput {
-    margin: 10px 0 0;
+    margin: 8px 0 0;
     max-height: 260px;
     overflow: auto;
     padding: 10px;
@@ -26,6 +382,32 @@
 }
 
 .diagnosticsOutput[hidden],
-#copyDiagnostics[hidden] {
+#copyDiagnostics[hidden],
+#debugSummary[hidden],
+#debugStages[hidden],
+#debugDnsSection[hidden],
+#debugEnvironmentSection[hidden],
+#debugEvidenceSection[hidden],
+#deepDnsSection[hidden],
+#debugReportActions[hidden],
+#rawDebugDetails[hidden] {
     display: none;
+}
+
+@media (max-width: 480px) {
+    .debugStages {
+        grid-template-columns: 1fr;
+    }
+
+    .debugEnvRow {
+        grid-template-columns: 100px minmax(0, 1fr);
+    }
+
+    .deepDnsRow {
+        grid-template-columns: minmax(0, 1fr) 62px;
+    }
+
+    .deepDnsAnswer {
+        grid-column: 1 / -1;
+    }
 }
