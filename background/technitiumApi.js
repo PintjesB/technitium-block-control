@@ -1,5 +1,5 @@
 // background/technitiumApi.js
-// Dieses Modul kapselt alle API-Anfragen an den Technitium DNS Server.
+// This module wraps all API requests to the Technitium DNS Server.
 
 async function getConfig() {
   return new Promise((resolve) => {
@@ -11,7 +11,7 @@ async function technitiumRequest(path) {
   const { baseUrl, apiKey } = await getConfig();
 
   if (!baseUrl || !apiKey) {
-    throw new Error("Technitium nicht konfiguriert");
+    throw new Error("Technitium is not configured");
   }
 
   const cleanBaseUrl = String(baseUrl).replace(/\/$/, "");
@@ -22,18 +22,18 @@ async function technitiumRequest(path) {
   try {
     response = await fetch(url, { method: "GET" });
   } catch (err) {
-    throw new Error("Technitium API nicht erreichbar");
+    throw new Error("Technitium API is unreachable");
   }
 
   if (!response.ok) {
-    throw new Error(`API HTTP Fehler (${response.status})`);
+    throw new Error(`API HTTP error (${response.status})`);
   }
 
   const data = await response.json();
 
   if (data.status && data.status !== "ok") {
-    // Technitium liefert z.B. { status: "error", errorMessage: "..."}
-    throw new Error(data.errorMessage || "Technitium API Fehler");
+    // Technitium may return e.g. { status: "error", errorMessage: "..." }.
+    throw new Error(data.errorMessage || "Technitium API error");
   }
 
   return data;
@@ -44,16 +44,15 @@ function withNode(path, node) {
   return `${path}${path.includes("?") ? "&" : "?"}node=${encodeURIComponent(node)}`;
 }
 
-// ===== Einstellungen / Blockier-Status =====
+// ===== Settings / blocking status =====
 
-// Ruft die allgemeinen DNS-Einstellungen ab.
+// Fetches general DNS settings.
 // GET /api/settings/get?token=...
 export async function getDnsSettings() {
   return technitiumRequest(`/settings/get`);
 }
 
-// Aktiviert oder deaktiviert das Ad-Blocking.
-// Setzt `enableBlocking` über den `settings/set`-Endpunkt.
+// Enables or disables ad blocking through the settings/set endpoint.
 export async function setEnableBlocking(enable) {
   // /api/settings/set?enableBlocking=true|false
   return technitiumRequest(
@@ -61,7 +60,7 @@ export async function setEnableBlocking(enable) {
   );
 }
 
-// Deaktiviert das Blocking für eine bestimmte Anzahl von Minuten.
+// Disables blocking temporarily for the requested number of minutes.
 // GET /api/settings/temporaryDisableBlocking?minutes=5
 export async function temporaryDisableBlocking(minutes) {
   const m = Math.max(1, Math.floor(minutes || 5));
@@ -70,24 +69,24 @@ export async function temporaryDisableBlocking(minutes) {
 
 // ===== Cluster =====
 
-// Liefert die aktuelle Session inklusive Server-/Cluster-Info. Dieser
-// Endpoint enthält clusterInitialized und clusterNodes auch für API-Tokens,
-// ohne Administration/View vorauszusetzen.
+// Returns the current session including server/cluster information. This
+// endpoint includes clusterInitialized and clusterNodes for API tokens without
+// requiring Administration/View permission.
 // GET /api/user/session/get
 export async function getSessionInfo() {
   return technitiumRequest(`/user/session/get`);
 }
 
-// ===== DNS-Apps =====
+// ===== DNS apps =====
 
-// Listet alle installierten DNS-Apps auf.
+// Lists all installed DNS apps.
 // GET /api/apps/list
 export async function listApps() {
   return technitiumRequest(`/apps/list`);
 }
 
-// ===== Protokolle (Query Logs) =====
-// WICHTIG: Der Endpunkt für Query Logs ist `/api/logs/query`, nicht `/api/apps/*`.
+// ===== Query logs =====
+// The Query Logs endpoint is /api/logs/query, not an /api/apps/* endpoint.
 export async function queryLogs(params) {
   const {
     name,
@@ -119,15 +118,15 @@ export async function queryLogs(params) {
   return technitiumRequest(`/logs/query?${qs.toString()}`);
 }
 
-// ===== Erlaubte Zonen (Allowed Zones) =====
+// ===== Allowed zones =====
 
-// Fügt eine Domain zur Allow-Liste hinzu.
+// Adds a domain to the allow list.
 // GET /api/allowed/add?domain=...
 export async function allowZone(domain) {
   return technitiumRequest(`/allowed/add?domain=${encodeURIComponent(domain)}`);
 }
 
-// Entfernt eine Domain von der Allow-Liste.
+// Removes a domain from the allow list.
 // GET /api/allowed/delete?domain=...
 export async function deleteAllowedZone(domain) {
   return technitiumRequest(
@@ -135,7 +134,7 @@ export async function deleteAllowedZone(domain) {
   );
 }
 
-// Listet die Einträge in den erlaubten Zonen auf.
+// Lists entries in Allowed Zones.
 // GET /api/allowed/list?domain=...
 export async function listAllowed(domain, node) {
   const d = domain ? encodeURIComponent(domain) : "";
@@ -144,7 +143,7 @@ export async function listAllowed(domain, node) {
 
 // ===== Cache =====
 
-// Löscht eine Domain aus dem DNS-Cache.
+// Deletes a domain from the DNS cache.
 // GET /api/cache/delete?domain=...
 export async function deleteCachedZone(domain, node) {
   return technitiumRequest(
