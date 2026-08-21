@@ -1,5 +1,6 @@
 import { queryLogs } from "../background/technitiumApi.js";
 import {
+  cachedServerFailureQtypes,
   formatDiagnosticReport,
   needsDnsOriginTrace,
   sanitizeDiagnosticValue,
@@ -29,10 +30,13 @@ function isBlockedEntry(entry) {
 function mapEntry(entry) {
   return {
     qname: normalizeDomain(entry?.qname),
+    qtype: entry?.qtype ?? null,
+    qclass: entry?.qclass ?? null,
     clientIpAddress: entry?.clientIpAddress || null,
     timestamp: entry?.timestamp || null,
     responseType: entry?.responseType ?? null,
     rcode: entry?.rcode ?? entry?.RCODE ?? null,
+    answer: entry?.answer ?? null,
     blocked: isBlockedEntry(entry),
   };
 }
@@ -62,6 +66,33 @@ function cachedServerFailureNodes(perNode = []) {
     .filter(Boolean);
 }
 
+async function queryNodePage({
+  node,
+  queryApp,
+  qname,
+  qtype,
+  clientIpAddress,
+  startIso,
+  endIso,
+  pageNumber,
+}) {
+  const response = await queryLogs({
+    name: queryApp.name,
+    classPath: queryApp.classPath,
+    pageNumber,
+    entriesPerPage: TRACE_ENTRIES_PER_PAGE,
+    descendingOrder: true,
+    startIso,
+    endIso,
+    clientIpAddress,
+    qname,
+    qtype: qtype || undefined,
+    node: node === "local" ? undefined : node,
+  });
+
+  return (response.response?.entries || []).map(mapEntry);
+}
+
 async function traceNodeOrigin({
   node,
   queryApp,
@@ -71,44 +102,85 @@ async function traceNodeOrigin({
   endIso,
 }) {
   try {
-    const trace = await traceNonCachedDnsOrigin({
-      maxPages: TRACE_MAX_PAGES,
-      fetchPage: async (pageNumber) => {
-        const response = await queryLogs({
-          name: queryApp.name,
-          classPath: queryApp.classPath,
-          pageNumber,
-          entriesPerPage: TRACE_ENTRIES_PER_PAGE,
-          descendingOrder: true,
-          startIso,
-          endIso,
-          clientIpAddress,
-          qname,
-          node: node === "local" ? undefined : node,
-        });
-        return (response.response?.entries || []).map(mapEntry);
-      },
+    const newestEntries = await queryNodePage({
+      node,
+      queryApp,
+      qname,
+      qtype: null,
+      clientIpAddress,
+      startIso,
+      endIso,
+      pageNumber: 1,
     });
+
+    const qtypes = cachedServerFailureQtypes(newestEntries);
+    if (qtypes.length === 0) {
+      return {
+        node,
+        ok: true,
+        qtypes: [],
+        traces: [],
+        note:
+          "The earlier diagnostic report contained cached SERVFAILs, but the fresh history query no longer returned any cached SERVFAIL qtypes.",
+      };
+    }
+
+    const traces = await Promise.all(
+      qtypes.map(async (qtype) => {
+        const trace = await traceNonCachedDnsOrigin({
+          maxPages: TRACE_MAX_PAGES,
+          fetchPage: (pageNumber) =>
+            queryNodePage({
+              node,
+              queryApp,
+              qname,
+              qtype,
+              clientIpAddress,
+              startIso,
+              endIso,
+              pageNumber,
+            }),
+        });
+
+        return {
+          qtype,
+          ...trace,
+        };
+      }),
+    );
 
     return {
       node,
       ok: true,
-      ...trace,
+      qtypes,
+      traces,
     };
   } catch (error) {
     return {
       node,
       ok: false,
       error: sanitizeDiagnosticValue(error?.message || String(error)),
-      found: false,
-      entry: null,
+      qtypes: [],
+      traces: [],
     };
   }
 }
 
 function traceSummary(results) {
-  const found = results.filter((result) => result.ok && result.found);
-  if (found.length === 0) {
+  const outcomes = results.flatMap((result) =>
+    (result.traces || [])
+      .filter((trace) => trace.found)
+      .map((trace) => ({
+        node: result.node,
+        qtype: trace.qtype,
+        responseType: trace.entry?.responseType ?? null,
+        rcode: trace.entry?.rcode ?? null,
+        timestamp: trace.entry?.timestamp ?? null,
+        answer: trace.entry?.answer ?? null,
+      })),
+  );
+
+  if (outcomes.length === 0) {
     return {
       code: "origin-not-found",
       detail:
@@ -116,17 +188,10 @@ function traceSummary(results) {
     };
   }
 
-  const outcomes = found.map((result) => ({
-    node: result.node,
-    responseType: result.entry?.responseType ?? null,
-    rcode: result.entry?.rcode ?? null,
-    timestamp: result.entry?.timestamp ?? null,
-  }));
-
   return {
     code: "origin-found",
     detail:
-      "The nearest earlier non-cached DNS outcome was found. Inspect responseType and rcode to identify what originally populated the cache.",
+      "The nearest earlier non-cached DNS outcome was found per affected qtype. Inspect responseType, rcode, and answer to identify what originally populated each cache failure.",
     outcomes,
   };
 }
@@ -186,7 +251,7 @@ async function appendOriginTrace(report) {
       lookbackMinutes: TRACE_LOOKBACK_MS / 60_000,
     },
     limits: {
-      maxPagesPerNode: TRACE_MAX_PAGES,
+      maxPagesPerQtypePerNode: TRACE_MAX_PAGES,
       entriesPerPage: TRACE_ENTRIES_PER_PAGE,
     },
     perNode: results,
