@@ -25,6 +25,10 @@ const CLIENT_IP_TTL_MS = 24 * 60 * 60 * 1000;
 const CLIENT_DETECTION_TIMEOUT_MS = 5000;
 const CLIENT_DETECTION_RETRY_MS = 250;
 
+const FAILED_NAVIGATION_PREFIX = "failedNavigation::";
+const FAILED_NAVIGATION_TTL_MS = 24 * 60 * 60 * 1000;
+const PAGE_DOMAIN_LOOKUP_RETRY_MS = 200;
+
 const TEMP_ALLOW_MINUTES_KEY = "tempAllowMinutes";
 const LOG_WINDOW_SECONDS_KEY = "logWindowSeconds";
 
@@ -33,6 +37,103 @@ const TEMP_ALLOW_STATE_KEY = "tempAllowState";
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+function isHttpUrl(value) {
+  if (typeof value !== "string" || !value) return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function navigationStorage() {
+  return chrome.storage.session || chrome.storage.local;
+}
+
+function failedNavigationKey(tabId) {
+  return `${FAILED_NAVIGATION_PREFIX}${tabId}`;
+}
+
+async function getFailedNavigation(tabId) {
+  if (!Number.isInteger(tabId) || tabId < 0) return null;
+  const key = failedNavigationKey(tabId);
+  const data = await navigationStorage().get(key);
+  return data[key] || null;
+}
+
+async function setFailedNavigation(tabId, details) {
+  if (!Number.isInteger(tabId) || tabId < 0 || !isHttpUrl(details?.url)) return;
+  const key = failedNavigationKey(tabId);
+  const timeStamp = Number.isFinite(details?.timeStamp)
+    ? details.timeStamp
+    : Date.now();
+  await navigationStorage().set({
+    [key]: { url: details.url, timeStamp },
+  });
+}
+
+async function clearFailedNavigation(tabId) {
+  if (!Number.isInteger(tabId) || tabId < 0) return;
+  await navigationStorage().remove(failedNavigationKey(tabId));
+}
+
+export function resolvePageContext({
+  tabUrl,
+  pendingUrl,
+  failedNavigation,
+  now = Date.now(),
+}) {
+  if (isHttpUrl(pendingUrl)) {
+    return { url: pendingUrl, navigationFailedAt: null };
+  }
+
+  const failedAt = Number(failedNavigation?.timeStamp);
+  const failedIsFresh =
+    isHttpUrl(failedNavigation?.url) &&
+    Number.isFinite(failedAt) &&
+    failedAt <= now + 60_000 &&
+    now - failedAt <= FAILED_NAVIGATION_TTL_MS;
+
+  if (failedIsFresh) {
+    return {
+      url: failedNavigation.url,
+      navigationFailedAt: failedAt,
+    };
+  }
+
+  return {
+    url: typeof tabUrl === "string" ? tabUrl : "",
+    navigationFailedAt: null,
+  };
+}
+
+if (chrome.webNavigation?.onErrorOccurred?.addListener) {
+  chrome.webNavigation.onErrorOccurred.addListener((details) => {
+    if (details.frameId !== 0) return;
+    setFailedNavigation(details.tabId, details).catch((error) =>
+      console.warn("[Technitium] Failed to remember navigation error:", error),
+    );
+  });
+}
+
+if (chrome.webNavigation?.onCommitted?.addListener) {
+  chrome.webNavigation.onCommitted.addListener((details) => {
+    if (details.frameId !== 0) return;
+    clearFailedNavigation(details.tabId).catch((error) =>
+      console.warn("[Technitium] Failed to clear navigation error:", error),
+    );
+  });
+}
+
+if (chrome.tabs?.onRemoved?.addListener) {
+  chrome.tabs.onRemoved.addListener((tabId) => {
+    clearFailedNavigation(tabId).catch((error) =>
+      console.warn("[Technitium] Failed to clear closed-tab navigation state:", error),
+    );
+  });
 }
 
 export function getClusterTopology(sessionInfo) {
@@ -487,6 +588,80 @@ function isBlockedLogEntry(e) {
   return false;
 }
 
+function summarizeBlockedDomain(domain, entries) {
+  const dNorm = normalizeDomain(domain);
+  let count = 0;
+  let lastSeen = null;
+
+  for (const entry of entries || []) {
+    if (normalizeDomain(entry?.qname) !== dNorm) continue;
+    if (!isBlockedLogEntry(entry)) continue;
+    count += 1;
+    const ts = entry.timestamp || null;
+    if (ts && (!lastSeen || ts > lastSeen)) lastSeen = ts;
+  }
+
+  if (count === 0) return null;
+  return { domain: dNorm, count, lastSeen };
+}
+
+export async function pollForBlockedDomain({
+  domain,
+  nodes,
+  queryLogger,
+  startIso,
+  endIso,
+  queryLogsFn = queryLogs,
+  now = Date.now,
+  sleepFn = sleep,
+  timeoutMs = 0,
+  intervalMs = PAGE_DOMAIN_LOOKUP_RETRY_MS,
+}) {
+  const dNorm = normalizeDomain(domain);
+  if (!dNorm) return null;
+
+  const queryNodes = Array.isArray(nodes) && nodes.length > 0 ? nodes : [null];
+  const startedAt = now();
+
+  while (true) {
+    const results = await Promise.all(
+      queryNodes.map(async (node) => {
+        try {
+          const response = await queryLogsFn({
+            name: queryLogger.name,
+            classPath: queryLogger.classPath,
+            entriesPerPage: 200,
+            descendingOrder: true,
+            startIso,
+            endIso,
+            qname: dNorm,
+            node: node || undefined,
+          });
+          return { ok: true, entries: response.response?.entries || [] };
+        } catch (error) {
+          return { ok: false, error };
+        }
+      }),
+    );
+
+    const successes = results.filter((result) => result.ok);
+    if (successes.length === 0 && results.length > 0) {
+      throw results[0].error;
+    }
+
+    const item = summarizeBlockedDomain(
+      dNorm,
+      successes.flatMap((result) => result.entries),
+    );
+    if (item) return item;
+
+    const elapsed = now() - startedAt;
+    if (elapsed >= timeoutMs) return null;
+
+    await sleepFn(Math.min(intervalMs, Math.max(0, timeoutMs - elapsed)));
+  }
+}
+
 function aggregateBlocked(entries) {
   const map = new Map();
   for (const e of entries) {
@@ -531,28 +706,14 @@ async function findBlockedForDomain(domain, options = {}) {
     startIso = new Date(Date.now() - seconds * 1000).toISOString();
   }
 
-  const entries = await queryEntriesAcrossNodes(topology, {
-    name: ql.name,
-    classPath: ql.classPath,
-    entriesPerPage: 200,
-    descendingOrder: true,
+  return pollForBlockedDomain({
+    domain: dNorm,
+    nodes: topology.nodes,
+    queryLogger: ql,
     startIso,
     endIso,
-    qname: dNorm,
+    timeoutMs: Math.max(0, Math.floor(options.retryMs || 0)),
   });
-
-  let count = 0;
-  let lastSeen = null;
-  for (const e of entries) {
-    if (normalizeDomain(e.qname) !== dNorm) continue;
-    if (!isBlockedLogEntry(e)) continue;
-    count += 1;
-    const ts = e.timestamp || null;
-    if (ts && (!lastSeen || ts > lastSeen)) lastSeen = ts;
-  }
-
-  if (count === 0) return null;
-  return { domain: dNorm, count, lastSeen };
 }
 
 async function isDomainAllowed(domain, primaryNode) {
@@ -609,6 +770,17 @@ async function allowedStatusBatch(domains) {
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   (async () => {
     try {
+      if (msg.action === "pageContext") {
+        const failedNavigation = await getFailedNavigation(msg.tabId);
+        const context = resolvePageContext({
+          tabUrl: msg.tabUrl,
+          pendingUrl: msg.pendingUrl,
+          failedNavigation,
+        });
+        sendResponse({ ok: true, ...context });
+        return;
+      }
+
       if (msg.action === "status") {
         const settings = await getDnsSettings();
         const enableBlocking = !!settings.response?.enableBlocking;
@@ -704,6 +876,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           startIso: msg.startIso,
           endIso: msg.endIso,
           seconds: msg.seconds,
+          retryMs: msg.retryMs,
         });
         sendResponse({ ok: true, item });
         return;
