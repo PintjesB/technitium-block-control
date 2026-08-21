@@ -1,0 +1,8 @@
+{
+  "name": "technitium-block-control",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  }
+}
