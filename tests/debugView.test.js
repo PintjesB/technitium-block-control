@@ -18,7 +18,7 @@ function baseReport() {
     },
     navigation: {
       failedNavigation: {
-        url: { scheme: "https", host: "fitgirl-repacks.site" },
+        url: { scheme: "https", host: "servfail.example.test" },
         timeStamp: 1_000,
         ageMs: 6_000,
         error: "net::ERR_NAME_NOT_RESOLVED",
@@ -26,16 +26,16 @@ function baseReport() {
     },
     page: {
       resolvedSource: "failedNavigation",
-      resolvedHost: "fitgirl-repacks.site",
+      resolvedHost: "servfail.example.test",
       snapshot: { ok: false, error: "Frame with ID 0 is showing error page" },
     },
     technitium: {
       cluster: {
         initialized: true,
-        primaryNode: "technitium-01.home",
+        primaryNode: "dns-primary.example.test",
         nodes: [
-          { name: "technitium-01.home", type: "Primary", state: "Self" },
-          { name: "technitium-02.home", type: "Secondary", state: "Connected" },
+          { name: "dns-primary.example.test", type: "Primary", state: "Self" },
+          { name: "dns-secondary.example.test", type: "Secondary", state: "Connected" },
         ],
       },
       queryLogsApp: {
@@ -44,41 +44,41 @@ function baseReport() {
       },
       client: {
         cached: {
-          location: { clientIpAddress: "192.168.100.158", node: "technitium-01.home" },
+          location: { clientIpAddress: "192.0.2.44", node: "dns-primary.example.test" },
           valid: true,
           ageMs: 20_000,
         },
         freshProbe: {
           ok: true,
-          location: { clientIpAddress: "192.168.100.158", node: "technitium-01.home" },
+          location: { clientIpAddress: "192.0.2.44", node: "dns-primary.example.test" },
         },
         effectiveLocation: {
-          clientIpAddress: "192.168.100.158",
-          node: "technitium-01.home",
+          clientIpAddress: "192.0.2.44",
+          node: "dns-primary.example.test",
         },
       },
       exactPageQuery: {
-        qname: "fitgirl-repacks.site",
+        qname: "servfail.example.test",
         perNode: [
           {
-            node: "technitium-01.home",
+            node: "dns-primary.example.test",
             ok: true,
             entries: [
               {
-                qname: "fitgirl-repacks.site",
+                qname: "servfail.example.test",
                 responseType: "Cached",
                 rcode: "ServerFailure",
                 blocked: false,
               },
               {
-                qname: "fitgirl-repacks.site",
+                qname: "servfail.example.test",
                 responseType: "Cached",
                 rcode: "ServerFailure",
                 blocked: false,
               },
             ],
           },
-          { node: "technitium-02.home", ok: true, entries: [] },
+          { node: "dns-secondary.example.test", ok: true, entries: [] },
         ],
       },
       dnsOriginTrace: {
@@ -86,14 +86,14 @@ function baseReport() {
           code: "origin-found",
           outcomes: [
             {
-              node: "technitium-01.home",
+              node: "dns-primary.example.test",
               qtype: "A",
               responseType: "Recursive",
               rcode: "ServerFailure",
               answer: null,
             },
             {
-              node: "technitium-01.home",
+              node: "dns-primary.example.test",
               qtype: "HTTPS",
               responseType: "Recursive",
               rcode: "ServerFailure",
@@ -116,19 +116,19 @@ function baseReport() {
   };
 }
 
-function terradnsDnsClientResponse() {
+function dnssecFailureDnsClientResponse() {
   const signatureExpired = {
     Code: "EXTENDED_DNS_ERROR",
     Data: {
       InfoCode: "SignatureExpired",
-      ExtraText: "terradns.org DNSKEY IN",
+      ExtraText: "dnssec-broken.example.test DNSKEY IN",
     },
   };
   const noAuthority = {
     Code: "EXTENDED_DNS_ERROR",
     Data: {
       InfoCode: "NoReachableAuthority",
-      ExtraText: "https://dns.quad9.net/dns-query returned RCODE=ServerFailure for ns1.terradns.org. A IN",
+      ExtraText: "https://resolver.example/dns-query returned RCODE=ServerFailure for ns1.example.test. A IN",
     },
   };
 
@@ -144,7 +144,7 @@ function terradnsDnsClientResponse() {
         DnsClientExtendedErrors: [
           {
             InfoCode: "SignatureExpired",
-            ExtraText: "terradns.org DNSKEY IN",
+            ExtraText: "dnssec-broken.example.test DNSKEY IN",
           },
         ],
         Additional: [
@@ -169,7 +169,7 @@ test("visual debug model reconstructs qtype chains from current raw diagnostics"
     detail: "Technitium received the page query, but recursive DNS resolution returned SERVFAIL.",
   });
 
-  assert.equal(view.page.host, "fitgirl-repacks.site");
+  assert.equal(view.page.host, "servfail.example.test");
   assert.equal(view.page.navigationError, "net::ERR_NAME_NOT_RESOLVED");
   assert.equal(view.client.cachedMatchesFresh, true);
   assert.equal(view.cluster.reachable, 2);
@@ -219,9 +219,9 @@ test("short debug summary contains the diagnosis and essential routing context",
   const summary = formatShortDebugSummary(buildDebugViewModel(report), report);
 
   assert.match(summary, /DNS resolution failure/);
-  assert.match(summary, /fitgirl-repacks\.site/);
-  assert.match(summary, /192\.168\.100\.158/);
-  assert.match(summary, /technitium-01\.home/);
+  assert.match(summary, /servfail\.example\.test/);
+  assert.match(summary, /192\.0\.2\.44/);
+  assert.match(summary, /dns-primary\.example\.test/);
   assert.match(summary, /A: Recursive\/ServerFailure -> Cached\/ServerFailure/);
   assert.match(summary, /HTTPS: Recursive\/ServerFailure -> Cached\/ServerFailure/);
   assert.doesNotMatch(summary, /apiKey|token=/i);
@@ -231,7 +231,7 @@ test("deep DNS plan tests the current server plus plaintext and encrypted extern
   const plan = buildDeepDnsPlan(baseReport());
 
   assert.deepEqual(plan.qtypes, ["A", "HTTPS"]);
-  assert.equal(plan.node, "technitium-01.home");
+  assert.equal(plan.node, "dns-primary.example.test");
   assert.deepEqual(
     plan.resolvers.map(({ id, server, protocol }) => ({ id, server, protocol })),
     [
@@ -267,7 +267,7 @@ test("DNS client response summary extracts RCODE and answer data from Technitium
 });
 
 test("DNS client response summary extracts and deduplicates Technitium EDEs", () => {
-  const summary = summarizeDnsClientResponse(terradnsDnsClientResponse());
+  const summary = summarizeDnsClientResponse(dnssecFailureDnsClientResponse());
 
   assert.equal(summary.ok, false);
   assert.equal(summary.rcode, "ServerFailure");
@@ -275,20 +275,20 @@ test("DNS client response summary extracts and deduplicates Technitium EDEs", ()
     {
       code: "SignatureExpired",
       label: "Signature Expired",
-      text: "terradns.org DNSKEY IN",
+      text: "dnssec-broken.example.test DNSKEY IN",
       source: "response",
     },
     {
       code: "NoReachableAuthority",
       label: "No Reachable Authority",
-      text: "https://dns.quad9.net/dns-query returned RCODE=ServerFailure for ns1.terradns.org. A IN",
+      text: "https://resolver.example/dns-query returned RCODE=ServerFailure for ns1.example.test. A IN",
       source: "response",
     },
   ]);
 });
 
 test("deep DNS diagnosis promotes SignatureExpired above generic SERVFAIL", () => {
-  const response = summarizeDnsClientResponse(terradnsDnsClientResponse());
+  const response = summarizeDnsClientResponse(dnssecFailureDnsClientResponse());
   const diagnosis = summarizeDeepDnsDiagnosis([
     {
       resolverId: "this-server",
@@ -301,14 +301,14 @@ test("deep DNS diagnosis promotes SignatureExpired above generic SERVFAIL", () =
   assert.deepEqual(diagnosis, {
     status: "error",
     title: "DNSSEC validation failure",
-    detail: "Signature Expired — terradns.org DNSKEY IN",
+    detail: "Signature Expired — dnssec-broken.example.test DNSKEY IN",
     kind: "confirmed",
   });
 });
 
 test("short summary includes precise Deep DNS EDE diagnosis", () => {
   const report = baseReport();
-  const response = summarizeDnsClientResponse(terradnsDnsClientResponse());
+  const response = summarizeDnsClientResponse(dnssecFailureDnsClientResponse());
   report.technitium.deepDnsTest = {
     results: [
       {
@@ -322,5 +322,5 @@ test("short summary includes precise Deep DNS EDE diagnosis", () => {
 
   const summary = formatShortDebugSummary(buildDebugViewModel(report), report);
   assert.match(summary, /Deep DNS: DNSSEC validation failure/);
-  assert.match(summary, /Signature Expired — terradns\.org DNSKEY IN/);
+  assert.match(summary, /Signature Expired — dnssec-broken\.example\.test DNSKEY IN/);
 });
