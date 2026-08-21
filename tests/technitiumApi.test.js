@@ -69,6 +69,28 @@ test("queryLogs can filter a DNS record type", async () => {
   assert.equal(url.searchParams.get("qtype"), "AAAA");
 });
 
+test("DNS client resolve routes a deep-debug query through a selected node", async () => {
+  assert.equal(typeof api.resolveDns, "function");
+
+  await api.resolveDns({
+    server: "https://cloudflare-dns.com/dns-query",
+    domain: "fitgirl-repacks.site",
+    type: "A",
+    protocol: "HTTPS",
+    dnssec: false,
+    node: "dns-02.example.test",
+  });
+
+  const url = new URL(requests[0].url);
+  assert.equal(url.pathname, "/api/dnsClient/resolve");
+  assert.equal(url.searchParams.get("server"), "https://cloudflare-dns.com/dns-query");
+  assert.equal(url.searchParams.get("domain"), "fitgirl-repacks.site");
+  assert.equal(url.searchParams.get("type"), "A");
+  assert.equal(url.searchParams.get("protocol"), "HTTPS");
+  assert.equal(url.searchParams.get("dnssec"), "false");
+  assert.equal(url.searchParams.get("node"), "dns-02.example.test");
+});
+
 test("getSessionInfo reads cluster metadata without admin-only APIs", async () => {
   assert.equal(typeof api.getSessionInfo, "function");
 
