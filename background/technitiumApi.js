@@ -39,6 +39,11 @@ async function technitiumRequest(path) {
   return data;
 }
 
+function withNode(path, node) {
+  if (!node) return path;
+  return `${path}${path.includes("?") ? "&" : "?"}node=${encodeURIComponent(node)}`;
+}
+
 // ===== Einstellungen / Blockier-Status =====
 
 // Ruft die allgemeinen DNS-Einstellungen ab.
@@ -63,6 +68,15 @@ export async function temporaryDisableBlocking(minutes) {
   return technitiumRequest(`/settings/temporaryDisableBlocking?minutes=${m}`);
 }
 
+// ===== Cluster =====
+
+// Liefert Cluster-Status und Nodes. Auf Standalone-Servern wird
+// clusterInitialized=false zurückgegeben.
+// GET /api/admin/cluster/state
+export async function getClusterState() {
+  return technitiumRequest(`/admin/cluster/state`);
+}
+
 // ===== DNS-Apps =====
 
 // Listet alle installierten DNS-Apps auf.
@@ -85,6 +99,7 @@ export async function queryLogs(params) {
     clientIpAddress,
     responseType,
     qname,
+    node,
   } = params || {};
 
   const qs = new URLSearchParams();
@@ -98,6 +113,7 @@ export async function queryLogs(params) {
   if (clientIpAddress) qs.set("clientIpAddress", clientIpAddress);
   if (responseType) qs.set("responseType", responseType);
   if (qname) qs.set("qname", qname);
+  if (node) qs.set("node", node);
 
   return technitiumRequest(`/logs/query?${qs.toString()}`);
 }
@@ -120,17 +136,17 @@ export async function deleteAllowedZone(domain) {
 
 // Listet die Einträge in den erlaubten Zonen auf.
 // GET /api/allowed/list?domain=...
-export async function listAllowed(domain) {
+export async function listAllowed(domain, node) {
   const d = domain ? encodeURIComponent(domain) : "";
-  return technitiumRequest(`/allowed/list?domain=${d}`);
+  return technitiumRequest(withNode(`/allowed/list?domain=${d}`, node));
 }
 
 // ===== Cache =====
 
 // Löscht eine Domain aus dem DNS-Cache.
 // GET /api/cache/delete?domain=...
-export async function deleteCachedZone(domain) {
+export async function deleteCachedZone(domain, node) {
   return technitiumRequest(
-    `/cache/delete?domain=${encodeURIComponent(domain)}`,
+    withNode(`/cache/delete?domain=${encodeURIComponent(domain)}`, node),
   );
 }
