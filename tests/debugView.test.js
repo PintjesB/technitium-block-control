@@ -65,14 +65,12 @@ function baseReport() {
             entries: [
               {
                 qname: "fitgirl-repacks.site",
-                qtype: "A",
                 responseType: "Cached",
                 rcode: "ServerFailure",
                 blocked: false,
               },
               {
                 qname: "fitgirl-repacks.site",
-                qtype: "HTTPS",
                 responseType: "Cached",
                 rcode: "ServerFailure",
                 blocked: false,
@@ -117,7 +115,7 @@ function baseReport() {
   };
 }
 
-test("visual debug model identifies recursive SERVFAIL as a DNS resolution failure", () => {
+test("visual debug model reconstructs qtype chains from current raw diagnostics", () => {
   const view = buildDebugViewModel(baseReport());
 
   assert.deepEqual(view.overall, {
@@ -149,14 +147,13 @@ test("visual debug model identifies recursive SERVFAIL as a DNS resolution failu
   assert.ok(view.evidence.some((line) => /not report a block-list response/i.test(line)));
 });
 
-test("visual debug model identifies a real Technitium block", () => {
+test("visual debug model identifies a real Technitium block without qtype metadata", () => {
   const report = baseReport();
   report.page.resolvedHost = "ads.example";
   report.technitium.exactPageQuery.qname = "ads.example";
   report.technitium.exactPageQuery.perNode[0].entries = [
     {
       qname: "ads.example",
-      qtype: "A",
       responseType: "Blocked",
       rcode: "NxDomain",
       blocked: true,
@@ -168,6 +165,7 @@ test("visual debug model identifies a real Technitium block", () => {
   const view = buildDebugViewModel(report);
   assert.equal(view.overall.status, "blocked");
   assert.equal(view.overall.title, "Blocked by Technitium");
+  assert.equal(view.dnsRecords[0].qtype, "DNS");
   assert.equal(view.dnsRecords[0].current.responseType, "Blocked");
 });
 
