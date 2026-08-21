@@ -19,7 +19,8 @@ const TIMER_ALARM = "reEnableBlocking";
 const CLIENT_LOCATION_CACHE_KEY = "clientLocation";
 const LEGACY_CLIENT_IP_CACHE_KEY = "clientIpAddress";
 const CLIENT_IP_CACHE_TS_KEY = "clientIpDetectedAt";
-const QUERY_LOGGER_CACHE_KEY = "queryLoggerApp";
+const QUERY_LOGS_CACHE_KEY = "queryLogsApp";
+const LEGACY_QUERY_LOGGER_CACHE_KEY = "queryLoggerApp";
 const CLIENT_IP_TTL_MS = 24 * 60 * 60 * 1000;
 const CLIENT_DETECTION_TIMEOUT_MS = 5000;
 const CLIENT_DETECTION_RETRY_MS = 250;
@@ -156,7 +157,7 @@ export async function pollForClientLocation({
     const endIso = new Date(queryTime).toISOString();
     const startIso = new Date(queryTime - 30 * 1000).toISOString();
 
-    const matches = await Promise.all(
+    const results = await Promise.all(
       queryNodes.map(async (node) => {
         try {
           const res = await queryLogsFn({
@@ -175,17 +176,25 @@ export async function pollForClientLocation({
               String(item?.qname || "").toLowerCase() === target &&
               item?.clientIpAddress,
           );
-          return entry
-            ? { clientIpAddress: entry.clientIpAddress, node: node || null }
-            : null;
-        } catch (_) {
-          return null;
+          return {
+            ok: true,
+            location: entry
+              ? { clientIpAddress: entry.clientIpAddress, node: node || null }
+              : null,
+          };
+        } catch (error) {
+          return { ok: false, error };
         }
       }),
     );
 
-    const match = matches.find(Boolean);
+    const match = results.find((result) => result.ok && result.location)?.location;
     if (match) return match;
+
+    const successfulQueries = results.filter((result) => result.ok);
+    if (successfulQueries.length === 0 && results.length > 0) {
+      throw results[0].error;
+    }
 
     const elapsed = now() - startedAt;
     if (elapsed >= timeoutMs) return null;
@@ -391,36 +400,43 @@ async function getOptionBool(key, defaultValue = false) {
   return defaultValue;
 }
 
-async function getCachedQueryLogger() {
-  const data = await chrome.storage.local.get(QUERY_LOGGER_CACHE_KEY);
-  const q = data[QUERY_LOGGER_CACHE_KEY];
+async function getCachedQueryLogsApp() {
+  const data = await chrome.storage.local.get(QUERY_LOGS_CACHE_KEY);
+  const q = data[QUERY_LOGS_CACHE_KEY];
   if (q?.name && q?.classPath) return q;
   return null;
 }
 
-async function setCachedQueryLogger(app) {
-  await chrome.storage.local.set({ [QUERY_LOGGER_CACHE_KEY]: app });
+async function setCachedQueryLogsApp(app) {
+  await chrome.storage.local.set({ [QUERY_LOGS_CACHE_KEY]: app });
+  await chrome.storage.local.remove(LEGACY_QUERY_LOGGER_CACHE_KEY);
 }
 
-async function detectQueryLoggerApp() {
-  const cached = await getCachedQueryLogger();
-  if (cached) return cached;
-
-  const res = await listApps();
-  const apps = res.response?.apps || [];
-
-  for (const app of apps) {
-    const dnsApps = app.dnsApps || [];
-    for (const da of dnsApps) {
-      if (da.isQueryLogger) {
-        const found = { name: app.name, classPath: da.classPath };
-        await setCachedQueryLogger(found);
-        return found;
+export function selectQueryLogsApp(apps) {
+  for (const app of apps || []) {
+    for (const dnsApp of app?.dnsApps || []) {
+      if (dnsApp?.isQueryLogs && dnsApp?.classPath) {
+        return { name: app.name, classPath: dnsApp.classPath };
       }
     }
   }
+  return null;
+}
 
-  throw new Error("Kein Query Logger DNS App gefunden (apps/list).");
+async function detectQueryLogsApp() {
+  const cached = await getCachedQueryLogsApp();
+  if (cached) return cached;
+
+  const res = await listApps();
+  const found = selectQueryLogsApp(res.response?.apps || []);
+  if (!found) {
+    throw new Error(
+      "No DNS app with query-log search support was found (apps/list).",
+    );
+  }
+
+  await setCachedQueryLogsApp(found);
+  return found;
 }
 
 async function inferClientLocationFromLogs({ force = false } = {}) {
@@ -436,7 +452,7 @@ async function inferClientLocationFromLogs({ force = false } = {}) {
     await fetch(`https://${qname}/`, { mode: "no-cors" });
   } catch (_) {}
 
-  const ql = await detectQueryLoggerApp();
+  const ql = await detectQueryLogsApp();
   const location = await pollForClientLocation({
     qname,
     nodes: topology.nodes,
@@ -445,7 +461,7 @@ async function inferClientLocationFromLogs({ force = false } = {}) {
 
   if (!location) {
     throw new Error(
-      "Client-IP konnte nicht ermittelt werden (keine Log-Entry gefunden).",
+      "Client IP could not be detected (no matching query-log entry found).",
     );
   }
 
@@ -499,7 +515,7 @@ async function findBlockedForDomain(domain, options = {}) {
   const dNorm = normalizeDomain(domain);
   if (!dNorm) return null;
 
-  const ql = await detectQueryLoggerApp();
+  const ql = await detectQueryLogsApp();
   const topology = await loadClusterTopology();
 
   let startIso;
@@ -635,7 +651,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
       if (msg.action === "blockedList") {
         let detected = await inferClientLocationFromLogs();
-        const ql = await detectQueryLoggerApp();
+        const ql = await detectQueryLogsApp();
 
         let startIso, endIso;
         if (msg.startIso && msg.endIso) {
