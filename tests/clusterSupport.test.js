@@ -2,19 +2,35 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+const noopListener = { addListener() {} };
+
 globalThis.chrome = {
   runtime: {
-    onInstalled: { addListener() {} },
-    onStartup: { addListener() {} },
-    onMessage: { addListener() {} },
+    onInstalled: noopListener,
+    onStartup: noopListener,
+    onMessage: noopListener,
   },
   alarms: {
-    onAlarm: { addListener() {} },
+    onAlarm: noopListener,
     async clear() {},
     async create() {},
   },
+  tabs: {
+    onRemoved: noopListener,
+  },
+  webNavigation: {
+    onErrorOccurred: noopListener,
+    onCommitted: noopListener,
+  },
   storage: {
     local: {
+      async get() {
+        return {};
+      },
+      async set() {},
+      async remove() {},
+    },
+    session: {
       async get() {
         return {};
       },
@@ -91,6 +107,108 @@ test("query-log app selection skips logger-only apps", () => {
     name: "Query Logs (Sqlite)",
     classPath: "QueryLogsSqlite.App",
   });
+});
+
+test("failed main-frame navigation overrides the previous committed tab URL", () => {
+  assert.equal(typeof worker.resolvePageContext, "function");
+
+  const failedAt = 10_000;
+  const context = worker.resolvePageContext({
+    tabUrl: "https://previous.example/",
+    pendingUrl: undefined,
+    failedNavigation: {
+      url: "https://blocked.example/path",
+      timeStamp: failedAt,
+    },
+    now: failedAt + 1_000,
+  });
+
+  assert.deepEqual(context, {
+    url: "https://blocked.example/path",
+    navigationFailedAt: failedAt,
+  });
+});
+
+test("pending navigation takes precedence over an older failed navigation", () => {
+  assert.equal(typeof worker.resolvePageContext, "function");
+
+  const context = worker.resolvePageContext({
+    tabUrl: "https://previous.example/",
+    pendingUrl: "https://new.example/loading",
+    failedNavigation: {
+      url: "https://blocked.example/",
+      timeStamp: 10_000,
+    },
+    now: 11_000,
+  });
+
+  assert.deepEqual(context, {
+    url: "https://new.example/loading",
+    navigationFailedAt: null,
+  });
+});
+
+test("stale failed navigation does not override the current tab URL", () => {
+  assert.equal(typeof worker.resolvePageContext, "function");
+
+  const context = worker.resolvePageContext({
+    tabUrl: "https://current.example/",
+    failedNavigation: {
+      url: "https://blocked.example/",
+      timeStamp: 1_000,
+    },
+    now: 1_000 + 24 * 60 * 60 * 1000 + 1,
+  });
+
+  assert.deepEqual(context, {
+    url: "https://current.example/",
+    navigationFailedAt: null,
+  });
+});
+
+test("blocked-domain lookup retries while the query logger flushes asynchronously", async () => {
+  assert.equal(typeof worker.pollForBlockedDomain, "function");
+
+  let clock = 0;
+  let round = 0;
+  const item = await worker.pollForBlockedDomain({
+    domain: "blocked.example",
+    nodes: ["dns-01", "dns-02"],
+    queryLogger: { name: "Query Logs (Sqlite)", classPath: "QueryLogsSqlite.App" },
+    startIso: new Date(0).toISOString(),
+    endIso: new Date(60_000).toISOString(),
+    now: () => clock,
+    sleepFn: async (ms) => {
+      clock += ms;
+      round += 1;
+    },
+    timeoutMs: 1000,
+    intervalMs: 200,
+    queryLogsFn: async ({ node }) => {
+      if (round >= 2 && node === "dns-02") {
+        return {
+          response: {
+            entries: [
+              {
+                qname: "blocked.example",
+                responseType: "Blocked",
+                rcode: "NoError",
+                timestamp: "2026-08-21T15:00:00Z",
+              },
+            ],
+          },
+        };
+      }
+      return { response: { entries: [] } };
+    },
+  });
+
+  assert.deepEqual(item, {
+    domain: "blocked.example",
+    count: 1,
+    lastSeen: "2026-08-21T15:00:00Z",
+  });
+  assert.equal(round, 2);
 });
 
 test("client detection surfaces an API error when every node query fails", async () => {

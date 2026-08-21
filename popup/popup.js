@@ -238,6 +238,7 @@ function isRestrictedUrl(url) {
 
   return (
     u.startsWith("chrome://") ||
+    u.startsWith("chrome-error://") ||
     u.startsWith("chrome-extension://") ||
     u.startsWith("moz-extension://") ||
     u.startsWith("vivaldi://") ||
@@ -463,7 +464,35 @@ async function refreshAll() {
   }
 
   const tab = await getActiveTab();
-  if (!tab || isRestrictedUrl(tab.url)) {
+  if (!tab) {
+    pageStatus.textContent = t("popup_page_cannot_analyze");
+    pageBlockedList.innerHTML = `<div class="empty">${t("popup_empty")}</div>`;
+    blockedList.innerHTML = `<div class="empty">${t("popup_empty")}</div>`;
+    return;
+  }
+
+  let pageContext = {
+    url: tab.pendingUrl || tab.url || "",
+    navigationFailedAt: null,
+  };
+  try {
+    const resolved = await send("pageContext", {
+      tabId: tab.id,
+      tabUrl: tab.url || "",
+      pendingUrl: tab.pendingUrl || "",
+    });
+    if (resolved?.ok && resolved.url) {
+      pageContext = {
+        url: resolved.url,
+        navigationFailedAt: Number.isFinite(resolved.navigationFailedAt)
+          ? resolved.navigationFailedAt
+          : null,
+      };
+    }
+  } catch {}
+
+  const pageUrl = pageContext.url || tab.pendingUrl || tab.url || "";
+  if (isRestrictedUrl(pageUrl)) {
     pageStatus.textContent = t("popup_page_cannot_analyze");
     pageBlockedList.innerHTML = `<div class="empty">${t("popup_empty")}</div>`;
     blockedList.innerHTML = `<div class="empty">${t("popup_empty")}</div>`;
@@ -472,7 +501,7 @@ async function refreshAll() {
 
   let pageTabHost = "";
   try {
-    pageTabHost = new URL(tab.url).hostname.toLowerCase();
+    pageTabHost = new URL(pageUrl).hostname.toLowerCase();
   } catch {
     pageTabHost = "";
   }
@@ -481,11 +510,11 @@ async function refreshAll() {
   try {
     snapshot = await collectPageSnapshot(tab.id);
   } catch {
-    // The Performance API can fail on browser error pages. Fall back to a
-    // minimal snapshot while still using the tab URL for domain matching.
+    // Browser error pages do not expose the failed document to scripting. Use
+    // the retained failed-navigation URL and timestamp for DNS-log matching.
     snapshot = {
       pageHost: pageTabHost,
-      pageStartEpoch: Date.now(),
+      pageStartEpoch: pageContext.navigationFailedAt || Date.now(),
       hosts: [],
       hostTypes: {},
     };
@@ -547,13 +576,24 @@ async function refreshAll() {
     }
 
     // 3) If the page's main domain was blocked but is missing from allItems,
-    // query that domain explicitly and add a synthetic entry when needed.
+    // query that exact domain explicitly. Failed top-level navigations use the
+    // recorded failure time so they remain findable outside the normal window.
     const existsInAll = allItems.some(
       (it) => normalizeDomain(it.domain) === pageNorm,
     );
     if (!existsInAll) {
       let extraRes;
-      if (logWindow.sinceLoad && logWindow.startIso && logWindow.endIso) {
+      if (Number.isFinite(pageContext.navigationFailedAt)) {
+        const failedAt = pageContext.navigationFailedAt;
+        const now = Date.now();
+        const retryMs = now - failedAt <= 10_000 ? 1500 : 0;
+        extraRes = await send("blockedForDomain", {
+          domain: pageNorm,
+          startIso: new Date(Math.max(0, failedAt - 30_000)).toISOString(),
+          endIso: new Date(now).toISOString(),
+          retryMs,
+        });
+      } else if (logWindow.sinceLoad && logWindow.startIso && logWindow.endIso) {
         extraRes = await send("blockedForDomain", {
           domain: pageNorm,
           startIso: logWindow.startIso,

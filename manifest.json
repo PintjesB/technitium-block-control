@@ -24,6 +24,6 @@
     "service_worker": "background/serviceWorker.js",
     "type": "module"
   },
-  "permissions": ["storage", "tabs", "scripting", "alarms"],
+  "permissions": ["storage", "tabs", "scripting", "alarms", "webNavigation"],
   "host_permissions": ["*://*/*"]
 }
