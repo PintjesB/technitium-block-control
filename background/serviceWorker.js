@@ -1,5 +1,5 @@
 // background/serviceWorker.js
-// Dieses Skript läuft im Hintergrund und steuert die Kernlogik der Extension.
+// This service worker runs in the background and controls the extension's core logic.
 
 import {
   getDnsSettings,
@@ -712,7 +712,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       if (msg.action === "allowDomain") {
         const domain = normalizeDomain(msg.domain);
         if (!domain) {
-          sendResponse({ error: "Ungültige Domain" });
+          sendResponse({ error: "Invalid domain" });
           return;
         }
 
@@ -725,7 +725,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       if (msg.action === "removeAllowDomain") {
         const domain = normalizeDomain(msg.domain);
         if (!domain) {
-          sendResponse({ error: "Ungültige Domain" });
+          sendResponse({ error: "Invalid domain" });
           return;
         }
 
@@ -738,7 +738,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       if (msg.action === "tempAllowDomain") {
         const domain = normalizeDomain(msg.domain);
         if (!domain) {
-          sendResponse({ error: "Ungültige Domain" });
+          sendResponse({ error: "Invalid domain" });
           return;
         }
 
@@ -770,9 +770,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         return;
       }
 
-      sendResponse({ error: "Unbekannte Aktion" });
+      sendResponse({ error: "Unknown action" });
     } catch (e) {
-      sendResponse({ error: e.message || "Fehler" });
+      sendResponse({ error: e.message || "Error" });
     }
   })();
 
