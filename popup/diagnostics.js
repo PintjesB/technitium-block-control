@@ -80,10 +80,13 @@ function isBlockedEntry(entry) {
 function mapEntry(entry) {
   return {
     qname: normalizeDomain(entry?.qname),
+    qtype: entry?.qtype ?? null,
+    qclass: entry?.qclass ?? null,
     clientIpAddress: entry?.clientIpAddress || null,
     timestamp: entry?.timestamp || null,
     responseType: entry?.responseType ?? null,
     rcode: entry?.rcode ?? entry?.RCODE ?? null,
+    answer: entry?.answer ?? null,
     blocked: isBlockedEntry(entry),
   };
 }
@@ -344,6 +347,7 @@ function compactNodeResults(results, limitPerNode = 20) {
 }
 
 async function collectDiagnostics() {
+  const collectionStartedAt = performance.now();
   const correlationId = createCorrelationId();
   const generatedAt = new Date().toISOString();
   const report = {
@@ -352,11 +356,14 @@ async function collectDiagnostics() {
       generatedAt,
       extensionVersion: chrome.runtime.getManifest?.().version || null,
     },
+    timings: {},
   };
 
   diagnosticLog(correlationId, "start", report.meta);
 
+  let stageStartedAt = performance.now();
   const tab = await getActiveTab();
+  report.timings.browserMs = performance.now() - stageStartedAt;
   report.browser = {
     tabId: tab?.id ?? null,
     status: tab?.status || null,
@@ -370,9 +377,11 @@ async function collectDiagnostics() {
       code: "no-active-tab",
       detail: "No active browser tab was available to diagnose.",
     };
+    report.timings.totalMs = performance.now() - collectionStartedAt;
     return formatDiagnosticReport(report);
   }
 
+  stageStartedAt = performance.now();
   const failedNavigation = await getFailedNavigation(tab.id);
   report.navigation = {
     failedNavigation: failedNavigation
@@ -409,6 +418,7 @@ async function collectDiagnostics() {
         resourceHosts: (snapshot.resourceHosts || []).slice(0, 50),
       }
     : snapshot;
+  report.timings.pageMs = performance.now() - stageStartedAt;
   diagnosticLog(correlationId, "page-snapshot", report.page.snapshot);
 
   let cluster = {
@@ -416,6 +426,7 @@ async function collectDiagnostics() {
     primaryNode: null,
     nodes: [{ name: null, type: "Unknown", state: "Unknown" }],
   };
+  stageStartedAt = performance.now();
   try {
     const session = await getSessionInfo();
     cluster = clusterFromSession(session);
@@ -428,6 +439,7 @@ async function collectDiagnostics() {
       },
     };
   }
+  report.timings.clusterMs = performance.now() - stageStartedAt;
   diagnosticLog(correlationId, "cluster", report.technitium.cluster);
 
   const nodes = nodeNames(cluster);
@@ -440,12 +452,14 @@ async function collectDiagnostics() {
 
   let discoveredQueryApp = null;
   let appsError = null;
+  stageStartedAt = performance.now();
   try {
     const apps = await listApps();
     discoveredQueryApp = selectQueryLogsApp(apps.response?.apps || []);
   } catch (error) {
     appsError = errorMessage(error);
   }
+  report.timings.queryLogsAppMs = performance.now() - stageStartedAt;
 
   const cachedQueryApp = cacheData[QUERY_LOGS_CACHE_KEY] || null;
   const queryApp = cachedQueryApp?.name && cachedQueryApp?.classPath
@@ -463,7 +477,9 @@ async function collectDiagnostics() {
   const cachedLocation = cacheData[CLIENT_LOCATION_CACHE_KEY] || null;
   const detectedAt = cacheData[CLIENT_IP_CACHE_TS_KEY];
   const cachedValid = clientCacheValidity(cachedLocation, detectedAt, cluster);
+  stageStartedAt = performance.now();
   const freshProbe = await freshClientProbe(nodes, queryApp, correlationId);
+  report.timings.clientProbeMs = performance.now() - stageStartedAt;
   const effectiveLocation = cachedValid
     ? cachedLocation
     : freshProbe.ok
@@ -495,6 +511,7 @@ async function collectDiagnostics() {
   };
 
   let generalResults = [];
+  stageStartedAt = performance.now();
   if (queryApp && effectiveLocation?.clientIpAddress) {
     generalResults = await queryEveryNode(nodes, {
       name: queryApp.name,
@@ -506,6 +523,7 @@ async function collectDiagnostics() {
       clientIpAddress: effectiveLocation.clientIpAddress,
     });
   }
+  report.timings.generalQueryMs = performance.now() - stageStartedAt;
 
   const generalEntries = generalResults.flatMap((result) => result.entries);
   const blockedGeneralEntries = generalEntries.filter((entry) => entry.blocked);
@@ -527,6 +545,7 @@ async function collectDiagnostics() {
   let exactAttempts = 0;
   let exactWindow = null;
 
+  stageStartedAt = performance.now();
   if (queryApp && effectiveLocation?.clientIpAddress && pageHost) {
     const failedAt = Number(pageContext.navigationFailedAt);
     const exactStart = Number.isFinite(failedAt)
@@ -560,6 +579,7 @@ async function collectDiagnostics() {
     exactAttempts = exact.attempts;
     exactResults = exact.results;
   }
+  report.timings.exactQueryMs = performance.now() - stageStartedAt;
 
   report.technitium.exactPageQuery = {
     qname: pageHost,
@@ -582,6 +602,7 @@ async function collectDiagnostics() {
     exactNodeResults: exactResults,
     matchedInGeneralList: generalPageMatches.length > 0,
   });
+  report.timings.totalMs = performance.now() - collectionStartedAt;
   diagnosticLog(correlationId, "decision", report.decision);
 
   return formatDiagnosticReport(report);
