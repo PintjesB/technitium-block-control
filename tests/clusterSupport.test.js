@@ -32,7 +32,7 @@ globalThis.fetch = async () => ({
 
 const worker = await import("../background/serviceWorker.js");
 
-test("cluster topology selects queryable nodes and the primary", () => {
+test("cluster topology retains every named node and the primary", () => {
   assert.equal(typeof worker.getClusterTopology, "function");
 
   const topology = worker.getClusterTopology({
@@ -46,7 +46,7 @@ test("cluster topology selects queryable nodes and the primary", () => {
     },
   });
 
-  assert.deepEqual(topology.nodes, ["dns-01", "dns-02"]);
+  assert.deepEqual(topology.nodes, ["dns-01", "dns-02", "dns-03"]);
   assert.equal(topology.primaryNode, "dns-01");
   assert.equal(topology.clusterInitialized, true);
 });
@@ -132,7 +132,7 @@ test("client detection tolerates an unreachable cluster node", async () => {
   });
 });
 
-test("cached client location is invalid after its node leaves the queryable topology", () => {
+test("cached client location is invalid after its node leaves the topology", () => {
   assert.equal(typeof worker.isClientLocationCacheValid, "function");
 
   const location = { clientIpAddress: "192.0.2.10", node: "dns-01" };
