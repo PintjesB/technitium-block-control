@@ -21,7 +21,7 @@
   },
   "options_page": "options/options.html",
   "background": {
-    "service_worker": "background/serviceWorker.js",
+    "service_worker": "background/worker.js",
     "type": "module"
   },
   "permissions": ["storage", "tabs", "scripting", "alarms", "webNavigation"],
