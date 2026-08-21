@@ -129,6 +129,23 @@ test("failed main-frame navigation overrides the previous committed tab URL", ()
   });
 });
 
+test("failed navigation state preserves Chrome's error code for diagnostics", () => {
+  assert.equal(typeof worker.createFailedNavigationState, "function");
+
+  assert.deepEqual(
+    worker.createFailedNavigationState({
+      url: "https://blocked.example/",
+      timeStamp: 12_345,
+      error: "net::ERR_NAME_NOT_RESOLVED",
+    }),
+    {
+      url: "https://blocked.example/",
+      timeStamp: 12_345,
+      error: "net::ERR_NAME_NOT_RESOLVED",
+    },
+  );
+});
+
 test("pending navigation takes precedence over an older failed navigation", () => {
   assert.equal(typeof worker.resolvePageContext, "function");
 
