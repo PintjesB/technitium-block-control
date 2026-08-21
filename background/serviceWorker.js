@@ -41,17 +41,7 @@ export function getClusterTopology(sessionInfo) {
   }
 
   const clusterNodes = Array.isArray(info.clusterNodes) ? info.clusterNodes : [];
-  const queryable = clusterNodes
-    .filter(
-      (node) =>
-        node?.name &&
-        (String(node.state).toLowerCase() === "self" ||
-          String(node.state).toLowerCase() === "connected"),
-    )
-    .map((node) => node.name);
-
-  const fallbackNodes = clusterNodes.filter((node) => node?.name).map((node) => node.name);
-  const nodes = queryable.length > 0 ? queryable : fallbackNodes;
+  const nodes = clusterNodes.filter((node) => node?.name).map((node) => node.name);
   const primaryNode =
     clusterNodes.find((node) => String(node?.type).toLowerCase() === "primary")?.name ||
     null;
