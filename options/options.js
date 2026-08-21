@@ -79,12 +79,12 @@ document.getElementById("save").addEventListener("click", () => {
       status.textContent = t("options_saved");
       setTimeout(() => (status.textContent = ""), 2000);
 
-      // Sprachwechsel sofort anwenden
+      // Apply language changes immediately.
       if (window.TAC_I18N) {
         window.TAC_I18N.init().then(() => window.TAC_I18N.localizePage());
       }
 
-      // Theme-Wechsel sofort anwenden
+      // Apply theme changes immediately.
       if (window.TAC_THEME && uiThemeSelect) {
         window.TAC_THEME.apply(uiThemeSelect.value || "auto");
       }
@@ -92,7 +92,7 @@ document.getElementById("save").addEventListener("click", () => {
   );
 });
 
-// Initialisiert die Internationalisierung (i18n)
+// Initialize internationalization (i18n).
 (async () => {
   if (window.TAC_I18N) {
     await window.TAC_I18N.init();
