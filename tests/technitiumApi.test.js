@@ -59,13 +59,13 @@ test("queryLogs can filter a DNS record type", async () => {
   await api.queryLogs({
     name: "Query Logs (Sqlite)",
     classPath: "QueryLogger",
-    qname: "fitgirl-repacks.site",
+    qname: "servfail.example.test",
     qtype: "AAAA",
   });
 
   const url = new URL(requests[0].url);
   assert.equal(url.pathname, "/api/logs/query");
-  assert.equal(url.searchParams.get("qname"), "fitgirl-repacks.site");
+  assert.equal(url.searchParams.get("qname"), "servfail.example.test");
   assert.equal(url.searchParams.get("qtype"), "AAAA");
 });
 
@@ -74,7 +74,7 @@ test("DNS client resolve routes a deep-debug query through a selected node", asy
 
   await api.resolveDns({
     server: "https://cloudflare-dns.com/dns-query",
-    domain: "fitgirl-repacks.site",
+    domain: "servfail.example.test",
     type: "A",
     protocol: "HTTPS",
     dnssec: false,
@@ -84,7 +84,7 @@ test("DNS client resolve routes a deep-debug query through a selected node", asy
   const url = new URL(requests[0].url);
   assert.equal(url.pathname, "/api/dnsClient/resolve");
   assert.equal(url.searchParams.get("server"), "https://cloudflare-dns.com/dns-query");
-  assert.equal(url.searchParams.get("domain"), "fitgirl-repacks.site");
+  assert.equal(url.searchParams.get("domain"), "servfail.example.test");
   assert.equal(url.searchParams.get("type"), "A");
   assert.equal(url.searchParams.get("protocol"), "HTTPS");
   assert.equal(url.searchParams.get("dnssec"), "false");
