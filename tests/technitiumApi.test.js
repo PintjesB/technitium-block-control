@@ -55,13 +55,13 @@ test("queryLogs preserves standalone behavior when node is omitted", async () =>
   assert.equal(url.searchParams.has("node"), false);
 });
 
-test("getClusterState reads cluster metadata without forcing node routing", async () => {
-  assert.equal(typeof api.getClusterState, "function");
+test("getSessionInfo reads cluster metadata without admin-only APIs", async () => {
+  assert.equal(typeof api.getSessionInfo, "function");
 
-  await api.getClusterState();
+  await api.getSessionInfo();
 
   const url = new URL(requests[0].url);
-  assert.equal(url.pathname, "/api/admin/cluster/state");
+  assert.equal(url.pathname, "/api/user/session/get");
   assert.equal(url.searchParams.has("node"), false);
 });
 
