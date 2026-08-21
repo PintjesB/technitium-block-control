@@ -118,3 +118,54 @@ export function diagnosePageCorrelation({
       "Technitium returned no exact page-domain entry for the detected client and diagnostic time window.",
   };
 }
+
+export async function traceNonCachedDnsOrigin({
+  fetchPage,
+  maxPages = 20,
+}) {
+  if (typeof fetchPage !== "function") {
+    throw new TypeError("fetchPage must be a function");
+  }
+
+  const boundedMaxPages = Math.max(1, Math.floor(maxPages || 1));
+  let cachedEntriesSkipped = 0;
+
+  for (let pageNumber = 1; pageNumber <= boundedMaxPages; pageNumber += 1) {
+    const entries = await fetchPage(pageNumber);
+    const pageEntries = Array.isArray(entries) ? entries : [];
+
+    if (pageEntries.length === 0) {
+      return {
+        found: false,
+        pagesScanned: pageNumber,
+        cachedEntriesSkipped,
+        exhausted: true,
+        entry: null,
+      };
+    }
+
+    for (const entry of pageEntries) {
+      const responseType = String(entry?.responseType || "").toLowerCase();
+      if (responseType === "cached") {
+        cachedEntriesSkipped += 1;
+        continue;
+      }
+
+      return {
+        found: true,
+        pagesScanned: pageNumber,
+        cachedEntriesSkipped,
+        exhausted: false,
+        entry,
+      };
+    }
+  }
+
+  return {
+    found: false,
+    pagesScanned: boundedMaxPages,
+    cachedEntriesSkipped,
+    exhausted: false,
+    entry: null,
+  };
+}
