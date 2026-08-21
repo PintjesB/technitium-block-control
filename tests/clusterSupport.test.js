@@ -1,3 +1,4 @@
+// Regression coverage for cluster-aware query-log behavior.
 import test from "node:test";
 import assert from "node:assert/strict";
 
