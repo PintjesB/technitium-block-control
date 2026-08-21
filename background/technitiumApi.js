@@ -70,11 +70,12 @@ export async function temporaryDisableBlocking(minutes) {
 
 // ===== Cluster =====
 
-// Liefert Cluster-Status und Nodes. Auf Standalone-Servern wird
-// clusterInitialized=false zurückgegeben.
-// GET /api/admin/cluster/state
-export async function getClusterState() {
-  return technitiumRequest(`/admin/cluster/state`);
+// Liefert die aktuelle Session inklusive Server-/Cluster-Info. Dieser
+// Endpoint enthält clusterInitialized und clusterNodes auch für API-Tokens,
+// ohne Administration/View vorauszusetzen.
+// GET /api/user/session/get
+export async function getSessionInfo() {
+  return technitiumRequest(`/user/session/get`);
 }
 
 // ===== DNS-Apps =====
