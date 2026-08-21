@@ -60,6 +60,58 @@ test("standalone topology keeps node routing disabled", () => {
   });
 });
 
+test("query-log app selection skips logger-only apps", () => {
+  assert.equal(typeof worker.selectQueryLogsApp, "function");
+
+  const selected = worker.selectQueryLogsApp([
+    {
+      name: "Log Exporter",
+      dnsApps: [
+        {
+          classPath: "LogExporter.App",
+          isQueryLogger: true,
+          isQueryLogs: false,
+        },
+      ],
+    },
+    {
+      name: "Query Logs (Sqlite)",
+      dnsApps: [
+        {
+          classPath: "QueryLogsSqlite.App",
+          isQueryLogger: true,
+          isQueryLogs: true,
+        },
+      ],
+    },
+  ]);
+
+  assert.deepEqual(selected, {
+    name: "Query Logs (Sqlite)",
+    classPath: "QueryLogsSqlite.App",
+  });
+});
+
+test("client detection surfaces an API error when every node query fails", async () => {
+  assert.equal(typeof worker.pollForClientLocation, "function");
+
+  await assert.rejects(
+    () =>
+      worker.pollForClientLocation({
+        qname: "probe.example.com",
+        nodes: ["dns-01", "dns-02"],
+        queryLogger: { name: "Log Exporter", classPath: "LogExporter.App" },
+        timeoutMs: 0,
+        queryLogsFn: async () => {
+          throw new Error(
+            "DNS application 'LogExporter.App' class path was not found: Log Exporter",
+          );
+        },
+      }),
+    /class path was not found/,
+  );
+});
+
 test("client detection searches every node and retries until the probe is logged", async () => {
   assert.equal(typeof worker.pollForClientLocation, "function");
 
