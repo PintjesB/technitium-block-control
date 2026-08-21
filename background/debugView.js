@@ -45,14 +45,48 @@ function uniqueQtypes(report) {
   return qtypes;
 }
 
+function entrySignature(entry) {
+  if (!entry) return null;
+  return [
+    lower(entry.responseType),
+    lower(entry.rcode ?? entry.RCODE),
+    entry.blocked === true ? "blocked" : "not-blocked",
+  ].join("|");
+}
+
+function sharedUntypedCurrent(entries) {
+  const untyped = entries.filter((entry) => !entry?.qtype);
+  if (untyped.length === 0) return null;
+  const firstSignature = entrySignature(untyped[0]);
+  if (!firstSignature) return null;
+  return untyped.every((entry) => entrySignature(entry) === firstSignature)
+    ? untyped[0]
+    : null;
+}
+
 function dnsRecords(report) {
   const currentEntries = flattenExactEntries(report);
   const origins = originOutcomes(report);
+  const qtypes = uniqueQtypes(report);
+  const sharedCurrent = sharedUntypedCurrent(currentEntries);
 
-  return uniqueQtypes(report).map((qtype) => ({
+  if (qtypes.length === 0 && currentEntries.length > 0) {
+    return [
+      {
+        qtype: "DNS",
+        origin: null,
+        current: currentEntries[0],
+      },
+    ];
+  }
+
+  return qtypes.map((qtype) => ({
     qtype,
     origin: origins.find((entry) => String(entry?.qtype) === qtype) || null,
-    current: currentEntries.find((entry) => String(entry?.qtype) === qtype) || null,
+    current:
+      currentEntries.find((entry) => String(entry?.qtype) === qtype) ||
+      sharedCurrent ||
+      null,
   }));
 }
 
@@ -61,6 +95,8 @@ function overallDiagnosis(report, records) {
   const queryApp = technitium?.queryLogsApp?.effective;
   const location = technitium?.client?.effectiveLocation;
   const exactResults = technitium?.exactPageQuery?.perNode || [];
+  const exactEntries = flattenExactEntries(report);
+  const origins = originOutcomes(report);
 
   if (!report?.page?.resolvedHost) {
     return {
@@ -94,7 +130,10 @@ function overallDiagnosis(report, records) {
     };
   }
 
-  if (records.some((record) => isBlocked(record.current))) {
+  if (
+    exactEntries.some(isBlocked) ||
+    records.some((record) => isBlocked(record.current))
+  ) {
     return {
       status: "blocked",
       title: "Blocked by Technitium",
@@ -103,6 +142,8 @@ function overallDiagnosis(report, records) {
   }
 
   if (
+    exactEntries.some(isServerFailure) ||
+    origins.some(isServerFailure) ||
     records.some(
       (record) => isServerFailure(record.origin) || isServerFailure(record.current),
     )
