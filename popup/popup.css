@@ -331,7 +331,7 @@ input[type="number"]:not(.minutesInput) {
     margin-top: 8px;
 }
 
-/* Basis-Listbox */
+/* Base list box */
 .listBox {
     margin-top: 10px;
     border: 1px solid var(--border);
@@ -341,12 +341,12 @@ input[type="number"]:not(.minutesInput) {
     padding: 6px;
 }
 
-/* Obere Liste: darf größer sein */
+/* Top list: may be taller */
 #pageBlockedList.listBox {
     max-height: 300px;
 }
 
-/* Untere Liste: ca. 4 Einträge sichtbar */
+/* Bottom list: approximately four visible entries */
 #blockedList.listBox {
     max-height: 170px;
 }
