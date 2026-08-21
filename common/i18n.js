@@ -45,32 +45,32 @@
   }
 
   function localizePage(root = document) {
-    // Übersetzt das `textContent`-Attribut von Elementen.
+    // Translates the textContent of matching elements.
     root.querySelectorAll("[data-i18n]").forEach((el) => {
       el.textContent = t(el.dataset.i18n);
     });
 
-    // Übersetzt das `innerHTML`-Attribut (vorsichtig bei unzuverlässigen Inhalten verwenden).
+    // Translates innerHTML. Use only with trusted localization content.
     root.querySelectorAll("[data-i18n-html]").forEach((el) => {
       el.innerHTML = t(el.dataset.i18nHtml);
     });
 
-    // Übersetzt das `placeholder`-Attribut von Eingabefeldern.
+    // Translates input placeholder attributes.
     root.querySelectorAll("[data-i18n-placeholder]").forEach((el) => {
       el.placeholder = t(el.dataset.i18nPlaceholder);
     });
 
-    // Übersetzt das `title`-Attribut (Tooltip).
+    // Translates title attributes used for tooltips.
     root.querySelectorAll("[data-i18n-title]").forEach((el) => {
       el.title = t(el.dataset.i18nTitle);
     });
 
-    // Übersetzt das `aria-label`-Attribut für Barrierefreiheit.
+    // Translates aria-label attributes for accessibility.
     root.querySelectorAll("[data-i18n-aria-label]").forEach((el) => {
       el.setAttribute("aria-label", t(el.dataset.i18nAriaLabel));
     });
 
-    // Setzt den Titel des Dokuments basierend auf einem Meta-Tag.
+    // Sets the document title from the localization metadata element.
     const titleEl = root.querySelector("meta[data-i18n-doc-title]");
     if (titleEl) {
       document.title = t(titleEl.dataset.i18nDocTitle);

@@ -8,11 +8,11 @@
       } else if (mode === "light") {
         document.documentElement.dataset.theme = "light";
       } else {
-        // "auto" (folgt den Systemeinstellungen via `prefers-color-scheme`)
+        // "auto" follows the system preference via prefers-color-scheme.
         delete document.documentElement.dataset.theme;
       }
     } catch {
-      // Fehler ignorieren
+      // Ignore theme application errors.
     }
   }
 
@@ -21,13 +21,13 @@
       const data = await chrome.storage.local.get({ uiTheme: "auto" });
       apply(data.uiTheme || "auto");
     } catch {
-      // Fehler ignorieren
+      // Ignore theme initialization errors.
     }
   }
 
-  // Stellt eine minimale API für die sofortige Vorschau auf der Optionsseite bereit.
+  // Expose a minimal API for immediate previews on the options page.
   window.TAC_THEME = { init, apply };
 
-  // Initialisierung ohne auf das Ergebnis zu warten.
+  // Initialize without waiting for the result.
   init();
 })();

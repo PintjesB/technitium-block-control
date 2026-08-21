@@ -18,13 +18,12 @@
                     />
                     <div>
                         <h1 data-i18n="options_heading">
-                            Technitium Adblock Control – Einstellungen
+                            Technitium Adblock Control – Settings
                         </h1>
                         <p class="subtitle" data-i18n="options_subtitle">
-                            Diese Extension verbindet deinen Browser mit der
-                            Technitium DNS Server API, um DNS-Adblocking
-                            clientbasiert zu steuern und geblockte Domains
-                            komfortabel zu (temporär) erlauben.
+                            This extension connects your browser to the Technitium
+                            DNS Server API to control DNS ad blocking per client and
+                            conveniently allow blocked domains temporarily or permanently.
                         </p>
                     </div>
                 </div>
@@ -32,35 +31,34 @@
 
             <section class="card">
                 <h2 data-i18n="options_card_what_title">
-                    Was macht die Extension?
+                    What does the extension do?
                 </h2>
                 <ul class="list">
                     <li data-i18n-html="options_li_blocking">
-                        <strong>Adblocking an/aus</strong> (dauerhaft oder
-                        zeitgesteuert).
+                        <strong>Ad blocking on/off</strong> permanently or for a timed interval.
                     </li>
                     <li data-i18n-html="options_li_show_blocked">
-                        <strong>Anzeige geblockter Domains</strong> (aus
-                        Technitium Query Logs, gefiltert auf deine Client-IP).
+                        <strong>Show blocked domains</strong> from Technitium Query Logs,
+                        filtered to your client IP.
                     </li>
                     <li data-i18n-html="options_li_compare_page">
-                        <strong>Abgleich mit der aktuellen Seite</strong>: zeigt
-                        an, welche geblockten Domains zur Seite passen.
+                        <strong>Compare with the current page</strong> to show which
+                        blocked domains belong to it.
                     </li>
                     <li data-i18n-html="options_li_whitelist">
-                        <strong>Whitelist per Klick</strong>: Allow / Temp Allow
-                        direkt im Popup.
+                        <strong>Allowlist with one click</strong> using Allow or Temp Allow
+                        directly from the popup.
                     </li>
                 </ul>
                 <p class="note" data-i18n-html="options_note_query_logs">
-                    Voraussetzung: In Technitium müssen
-                    <strong>Query Logs</strong> aktiviert sein (SQLite).
+                    Requirement: <strong>Query Logs</strong> must be enabled in Technitium
+                    using a queryable logging app such as Query Logs (Sqlite).
                 </p>
             </section>
 
             <section class="card">
                 <h2 data-i18n="options_card_legend_title">
-                    Legende & Darstellungsmodi
+                    Legend & display modes
                 </h2>
 
                 <div class="legend">
@@ -71,14 +69,14 @@
                                 class="legendTitle"
                                 data-i18n="options_legend_first_title"
                             >
-                                First-Party (zur Seite gehörend)
+                                First-party (belongs to the page)
                             </div>
                             <div
                                 class="legendText"
                                 data-i18n="options_legend_first_text"
                             >
-                                Domain hat dieselbe Basisdomain wie die aktuell
-                                besuchte Seite (Heuristik).
+                                The domain has the same base domain as the currently
+                                visited page (heuristic).
                             </div>
                         </div>
                     </div>
@@ -90,16 +88,15 @@
                                 class="legendTitle"
                                 data-i18n="options_legend_third_title"
                             >
-                                3rd-Party
+                                3rd-party
                             </div>
                             <div
                                 class="legendText"
                                 data-i18n-html="options_legend_third_text"
                             >
-                                Domain unterscheidet sich von der Basisdomain
-                                der Seite (Tracker/CDN/Ads etc.). Im Popup
-                                erscheint das Tag
-                                <span class="pill">3rd</span>.
+                                The domain differs from the page's base domain
+                                (tracker/CDN/ads, etc.). The popup shows the
+                                <span class="pill">3rd</span> tag.
                             </div>
                         </div>
                     </div>
@@ -116,15 +113,14 @@
                                 class="legendTitle"
                                 data-i18n="options_legend_type_title"
                             >
-                                Ressourcen-Typ
+                                Resource type
                             </div>
                             <div
                                 class="legendText"
                                 data-i18n="options_legend_type_text"
                             >
-                                Zusätzliche Badges zeigen an, welcher Elementtyp
-                                zu einer Domain gehört (z.B. Bilder, Scripts,
-                                Stylesheets).
+                                Additional badges indicate the element type associated
+                                with a domain, such as images, scripts, or stylesheets.
                             </div>
                         </div>
                     </div>
@@ -136,14 +132,14 @@
                                 class="legendTitle"
                                 data-i18n="options_legend_hot_title"
                             >
-                                „Hot“ (häufig geblockt)
+                                “Hot” (frequently blocked)
                             </div>
                             <div
                                 class="legendText"
                                 data-i18n="options_legend_hot_text"
                             >
-                                Linker Marker bedeutet: diese Domain wurde in
-                                den Logs sehr oft geblockt (aktuell: ab 20×).
+                                The left marker indicates that the domain was blocked
+                                frequently in the logs (currently 20 or more times).
                             </div>
                         </div>
                     </div>
@@ -155,15 +151,14 @@
                                 class="legendTitle"
                                 data-i18n="options_legend_allowed_title"
                             >
-                                Allowed (bereits erlaubt)
+                                Allowed (already allowed)
                             </div>
                             <div
                                 class="legendText"
                                 data-i18n-html="options_legend_allowed_text"
                             >
-                                Grün markiert + Badge „Allowed“: diese Domain
-                                ist bereits auf der Allowlist. Im Popup
-                                erscheint „Remove Allow“.
+                                Highlighted in green with an “Allowed” badge. The popup
+                                shows “Remove Allow” for domains already on the allowlist.
                             </div>
                         </div>
                     </div>
@@ -185,8 +180,8 @@
                                 class="legendText"
                                 data-i18n="options_legend_btn_allow_text"
                             >
-                                Fügt die Domain zur Allowlist hinzu (dauerhaft,
-                                je nach Technitium-Konfiguration).
+                                Adds the domain to the allowlist permanently, subject to
+                                the Technitium configuration.
                             </div>
                         </div>
                     </div>
@@ -206,8 +201,7 @@
                                 class="legendText"
                                 data-i18n="options_legend_btn_remove_text"
                             >
-                                Entfernt die Domain aus der Allowlist (Allowed
-                                Zones).
+                                Removes the domain from Allowed Zones.
                             </div>
                         </div>
                     </div>
@@ -227,51 +221,50 @@
                                 class="legendText"
                                 data-i18n="options_legend_btn_temp_text"
                             >
-                                Erlaubt die Domain temporär (Dauer
-                                konfigurierbar in den Optionen).
+                                Allows the domain temporarily for the duration configured
+                                in Options.
                             </div>
                         </div>
                     </div>
 
                     <div class="legendRow">
                         <span class="pill" data-i18n="popup_toggle_since_load"
-                            >Seit Seitenaufruf</span
+                            >Since page load</span
                         >
                         <div>
                             <div
                                 class="legendTitle"
                                 data-i18n="options_legend_since_title"
                             >
-                                Seit Seitenaufruf
+                                Since page load
                             </div>
                             <div
                                 class="legendText"
                                 data-i18n="options_legend_since_text"
                             >
-                                Nutzt nur Log-Einträge seit dem Laden der
-                                aktuellen Seite (statt „letzte X Sekunden“).
+                                Uses only log entries created since the current page was
+                                loaded instead of the last X seconds.
                             </div>
                         </div>
                     </div>
 
                     <div class="legendRow">
                         <span class="pill" data-i18n="popup_toggle_only_hits"
-                            >Nur Seiten-Treffer</span
+                            >Only page matches</span
                         >
                         <div>
                             <div
                                 class="legendTitle"
                                 data-i18n="options_legend_only_title"
                             >
-                                Nur Seiten-Treffer
+                                Only page matches
                             </div>
                             <div
                                 class="legendText"
                                 data-i18n="options_legend_only_text"
                             >
-                                Blendet die zweite Liste („Weitere geblockte
-                                Domains“) aus, damit du dich auf diese Seite
-                                fokussierst.
+                                Hides the second list (“Other blocked domains”) so you can
+                                focus on the current page.
                             </div>
                         </div>
                     </div>
@@ -280,22 +273,21 @@
                         <span
                             class="pill"
                             data-i18n="options_legend_allowstatus_title"
-                            >Allow-Status</span
+                            >Allow status</span
                         >
                         <div>
                             <div
                                 class="legendTitle"
                                 data-i18n="options_legend_allowstatus_title"
                             >
-                                Allow-Status im Popup
+                                Allow status in the popup
                             </div>
                             <div
                                 class="legendText"
                                 data-i18n="options_legend_allowstatus_text"
                             >
-                                Markiert bereits erlaubte Domains (Badge
-                                „Allowed“) und zeigt „Remove Allow“ statt
-                                „Allow“.
+                                Marks domains that are already allowed with an “Allowed”
+                                badge and shows “Remove Allow” instead of “Allow”.
                             </div>
                         </div>
                     </div>
@@ -303,7 +295,7 @@
             </section>
 
             <section class="card">
-                <h2 data-i18n="options_card_connection_title">Verbindung</h2>
+                <h2 data-i18n="options_card_connection_title">Connection</h2>
 
                 <label class="field">
                     <span class="label" data-i18n="options_label_baseurl"
@@ -317,7 +309,7 @@
                         autocomplete="off"
                     />
                     <span class="help" data-i18n="options_help_baseurl"
-                        >Beispiel: https://dns.example.com oder
+                        >Example: https://dns.example.com or
                         http://10.10.0.2:5380</span
                     >
                 </label>
@@ -328,38 +320,37 @@
                     >
                     <input type="password" id="apiKey" autocomplete="off" />
                     <span class="help" data-i18n="options_help_apikey"
-                        >Wird lokal im Browser gespeichert
-                        (chrome.storage.local).</span
+                        >Stored locally in the browser using chrome.storage.local.</span
                     >
                 </label>
             </section>
 
             <section class="card">
                 <h2 data-i18n="options_card_display_title">
-                    Darstellung & Verhalten
+                    Display & behavior
                 </h2>
 
                 <label class="field">
                     <span class="label" data-i18n="options_label_language"
-                        >Sprache</span
+                        >Language</span
                     >
                     <select id="uiLanguage">
                         <option
                             value="system"
                             data-i18n="options_language_system"
                         >
-                            System (automatisch)
+                            System (automatic)
                         </option>
                         <option value="de" data-i18n="options_language_de">
-                            Deutsch
+                            German
                         </option>
                         <option value="en" data-i18n="options_language_en">
                             English
                         </option>
                     </select>
                     <span class="help" data-i18n="options_help_language">
-                        Standardmäßig nutzt die Extension die UI-Sprache deines
-                        Browsers. Du kannst sie hier überschreiben.
+                        By default, the extension follows your browser UI language. You
+                        can override it here.
                     </span>
                 </label>
 
@@ -369,7 +360,7 @@
                     >
                     <select id="uiTheme">
                         <option value="auto" data-i18n="options_theme_auto">
-                            System (automatisch)
+                            System (automatic)
                         </option>
                         <option value="light" data-i18n="options_theme_light">
                             Light
@@ -382,14 +373,14 @@
                         </option>
                     </select>
                     <span class="help" data-i18n="options_help_theme">
-                        Standardmäßig folgt die Extension dem Browser-Theme
-                        (Hell/Dunkel). Du kannst hier ein Theme erzwingen.
+                        By default, the extension follows the browser theme. You can force
+                        a theme here.
                     </span>
                 </label>
 
                 <label class="field">
                     <span class="label" data-i18n="options_label_logwindow"
-                        >Log-Zeitfenster (Sekunden)</span
+                        >Log window (seconds)</span
                     >
                     <input
                         type="number"
@@ -399,14 +390,14 @@
                         step="10"
                     />
                     <span class="help" data-i18n="options_help_logwindow">
-                        Wie weit zurück die Extension standardmäßig im Query Log
-                        sucht (wenn „Seit Seitenaufruf“ aus ist).
+                        How far back the extension searches Query Logs by default when
+                        “Since page load” is disabled.
                     </span>
                 </label>
 
                 <label class="field">
                     <span class="label" data-i18n="options_label_tempallow"
-                        >Temp-Allow Dauer (Minuten)</span
+                        >Temp Allow duration (minutes)</span
                     >
                     <input
                         type="number"
@@ -416,14 +407,13 @@
                         step="1"
                     />
                     <span class="help" data-i18n="options_help_tempallow"
-                        >Wie lange „Temp Allow“ eine Domain temporär
-                        erlaubt.</span
+                        >How long Temp Allow keeps a domain temporarily allowed.</span
                     >
                 </label>
 
                 <div class="actions">
                     <button id="save" data-i18n="options_save">
-                        Speichern
+                        Save
                     </button>
                     <p id="status" class="status"></p>
                 </div>
@@ -431,10 +421,9 @@
 
             <footer class="footer">
                 <p class="footnote" data-i18n="options_footer_note">
-                    Hinweis: Diese Extension liest keine Seiteninhalte aus. Für
-                    den Seiten-Abgleich werden nur die Hostnames von
-                    Netzwerk-Ressourcen (Performance-Einträge) im aktuellen Tab
-                    genutzt.
+                    Note: This extension does not read page content. Page matching uses
+                    only network-resource hostnames from Performance entries in the
+                    current tab.
                 </p>
             </footer>
         </div>
