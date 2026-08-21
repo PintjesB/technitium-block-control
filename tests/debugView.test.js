@@ -221,3 +221,20 @@ test("DNS client response summary extracts RCODE and answer data from Technitium
     },
   );
 });
+
+test("deep DNS comparison identifies plaintext-path failure without claiming ISP blocking", () => {
+  const report = baseReport();
+  report.technitium.deepDnsTest = {
+    results: [
+      { resolverId: "this-server", qtype: "A", ok: false, rcode: "ServerFailure" },
+      { resolverId: "cloudflare-udp", qtype: "A", ok: false, rcode: "ServerFailure" },
+      { resolverId: "cloudflare-doh", qtype: "A", ok: true, rcode: "NoError" },
+      { resolverId: "google-doh", qtype: "A", ok: true, rcode: "NoError" },
+    ],
+  };
+
+  const view = buildDebugViewModel(report);
+  assert.equal(view.likelyCause.kind, "inference");
+  assert.equal(view.likelyCause.label, "Plain DNS path interference or reachability issue");
+  assert.doesNotMatch(view.likelyCause.detail, /ISP blocking/i);
+});
