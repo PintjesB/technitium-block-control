@@ -1,6 +1,7 @@
 // Regression coverage for cluster-aware query-log behavior.
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createNavigationErrorState } from "../background/navigationDebug.js";
 
 const noopListener = { addListener() {} };
 
@@ -130,10 +131,8 @@ test("failed main-frame navigation overrides the previous committed tab URL", ()
 });
 
 test("failed navigation state preserves Chrome's error code for diagnostics", () => {
-  assert.equal(typeof worker.createFailedNavigationState, "function");
-
   assert.deepEqual(
-    worker.createFailedNavigationState({
+    createNavigationErrorState({
       url: "https://blocked.example/",
       timeStamp: 12_345,
       error: "net::ERR_NAME_NOT_RESOLVED",
