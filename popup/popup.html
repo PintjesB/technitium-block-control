@@ -6,6 +6,7 @@
         <meta data-i18n-doc-title="popup_doc_title" />
         <title>Technitium Adblock Control</title>
         <link rel="stylesheet" href="popup.css" />
+        <link rel="stylesheet" href="diagnostics.css" />
     </head>
     <body>
         <button id="themeToggle" class="themeToggle" data-i18n-title="popup_theme_toggle" data-i18n-aria-label="popup_theme_toggle" title="Switch theme" aria-label="Switch theme">☀</button>
@@ -85,8 +86,26 @@
             </div>
         </div>
 
+        <div class="section" id="diagnosticsSection">
+            <div class="headerRow">
+                <div>
+                    <b>Diagnostics</b>
+                </div>
+                <div class="diagnosticsActions">
+                    <button id="runDiagnostics">Run diagnostics</button>
+                    <button id="copyDiagnostics" hidden>Copy report</button>
+                </div>
+            </div>
+            <p class="small diagnosticsHelp">
+                Read-only trace of browser navigation, Technitium cluster/client detection,
+                and the exact page-domain query. API keys and tokens are redacted.
+            </p>
+            <pre id="diagnosticsOutput" class="diagnosticsOutput" hidden></pre>
+        </div>
+
         <script src="../common/theme.js"></script>
         <script src="../common/i18n.js"></script>
         <script src="popup.js"></script>
+        <script type="module" src="diagnostics.js"></script>
     </body>
 </html>
