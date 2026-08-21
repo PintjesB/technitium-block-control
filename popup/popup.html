@@ -6,6 +6,7 @@
         <meta data-i18n-doc-title="popup_doc_title" />
         <title>Technitium Adblock Control</title>
         <link rel="stylesheet" href="popup.css" />
+        <link rel="stylesheet" href="diagnostics.css" />
     </head>
     <body>
         <button id="themeToggle" class="themeToggle" data-i18n-title="popup_theme_toggle" data-i18n-aria-label="popup_theme_toggle" title="Switch theme" aria-label="Switch theme">☀</button>
@@ -67,7 +68,7 @@
                 </label>
                 <label>
                     <input type="checkbox" id="toggleOnlyHits" />
-                    <span data-i18n="popup_toggle_only_hits">Only page matches</span>
+                    <span data-i18n="popup_toggle_only_hits">Only page hits</span>
                 </label>
             </div>
 
@@ -79,14 +80,32 @@
         </div>
 
         <div class="section">
-            <b data-i18n="popup_more_blocked">Other blocked domains</b>
+            <b data-i18n="popup_more_blocked">More blocked domains</b>
             <div class="listBox" id="blockedList">
                 <div class="empty" data-i18n="popup_empty">No entries.</div>
             </div>
         </div>
 
+        <div class="section" id="diagnosticsSection">
+            <div class="headerRow">
+                <div>
+                    <b>Diagnostics</b>
+                </div>
+                <div class="diagnosticsActions">
+                    <button id="runDiagnostics">Run diagnostics</button>
+                    <button id="copyDiagnostics" hidden>Copy report</button>
+                </div>
+            </div>
+            <p class="small diagnosticsHelp">
+                Read-only trace of browser navigation, Technitium cluster/client detection,
+                and the exact page-domain query. API keys and tokens are redacted.
+            </p>
+            <pre id="diagnosticsOutput" class="diagnosticsOutput" hidden></pre>
+        </div>
+
         <script src="../common/theme.js"></script>
         <script src="../common/i18n.js"></script>
         <script src="popup.js"></script>
+        <script type="module" src="diagnostics.js"></script>
     </body>
 </html>
