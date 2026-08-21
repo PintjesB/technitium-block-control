@@ -86,21 +86,66 @@
             </div>
         </div>
 
-        <div class="section" id="diagnosticsSection">
-            <div class="headerRow">
-                <div>
-                    <b>Diagnostics</b>
+        <div class="section debugSection">
+            <details id="debugPanel" class="debugPanel">
+                <summary class="debugPanelSummary">
+                    <span>Debug</span>
+                    <span class="debugSummaryHint">DNS & extension troubleshooting</span>
+                </summary>
+
+                <div class="debugBody">
+                    <div class="debugActions">
+                        <button id="runDiagnostics">Run debug</button>
+                        <button id="deepDnsTest" disabled>Deep DNS test</button>
+                        <button id="clearDebugCache">Clear detection cache</button>
+                    </div>
+
+                    <div id="debugVisualState" class="debugVisualState">
+                        <div class="debugPlaceholder">
+                            Run debug to inspect the current page, client, cluster, and DNS path.
+                        </div>
+                    </div>
+
+                    <div id="debugSummary" class="debugDiagnosis" hidden></div>
+
+                    <div id="debugStages" class="debugStages" hidden></div>
+
+                    <div id="debugDnsSection" class="debugSubsection" hidden>
+                        <div class="debugSubheading">DNS outcome</div>
+                        <div id="debugDnsRecords" class="debugDnsRecords"></div>
+                    </div>
+
+                    <div id="debugEnvironmentSection" class="debugSubsection" hidden>
+                        <div class="debugSubheading">Environment</div>
+                        <div id="debugEnvironment" class="debugEnvironment"></div>
+                    </div>
+
+                    <div id="debugEvidenceSection" class="debugSubsection" hidden>
+                        <div class="debugSubheading">Evidence & likely cause</div>
+                        <div id="debugLikelyCause" class="debugCause"></div>
+                        <ul id="debugEvidence" class="debugEvidence"></ul>
+                    </div>
+
+                    <div id="deepDnsSection" class="debugSubsection" hidden>
+                        <div class="debugSubheading">Deep DNS comparison</div>
+                        <div class="small debugHelp">
+                            Runs read-only DNS Client queries from the detected Technitium node.
+                            Requires DNS Client/View permission on the API token.
+                        </div>
+                        <div id="deepDnsResults" class="deepDnsResults"></div>
+                    </div>
+
+                    <div class="debugReportActions" id="debugReportActions" hidden>
+                        <button id="copyDebugSummary">Copy short summary</button>
+                        <button id="copyDiagnostics" hidden>Copy full report</button>
+                    </div>
+
+                    <details id="rawDebugDetails" class="rawDebugDetails" hidden>
+                        <summary>Raw details</summary>
+                        <pre id="diagnosticsOutput" class="diagnosticsOutput" hidden></pre>
+                    </details>
                 </div>
-                <div class="diagnosticsActions">
-                    <button id="runDiagnostics">Run diagnostics</button>
-                    <button id="copyDiagnostics" hidden>Copy report</button>
-                </div>
-            </div>
-            <p class="small diagnosticsHelp">
-                Read-only trace of browser navigation, Technitium cluster/client detection,
-                and the exact page-domain query. API keys and tokens are redacted.
-            </p>
-            <pre id="diagnosticsOutput" class="diagnosticsOutput" hidden></pre>
+            </details>
         </div>
 
         <script src="../common/theme.js"></script>
@@ -108,5 +153,6 @@
         <script src="popup.js"></script>
         <script type="module" src="diagnostics.js"></script>
         <script type="module" src="originTrace.js"></script>
+        <script type="module" src="debugPanel.js"></script>
     </body>
 </html>
