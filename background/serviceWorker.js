@@ -5,6 +5,7 @@ import {
   getDnsSettings,
   setEnableBlocking,
   temporaryDisableBlocking,
+  getSessionInfo,
   listApps,
   queryLogs,
   allowZone,
@@ -15,24 +16,271 @@ import {
 
 const TIMER_ALARM = "reEnableBlocking";
 
-const CLIENT_IP_CACHE_KEY = "clientIpAddress";
+const CLIENT_LOCATION_CACHE_KEY = "clientLocation";
+const LEGACY_CLIENT_IP_CACHE_KEY = "clientIpAddress";
 const CLIENT_IP_CACHE_TS_KEY = "clientIpDetectedAt";
-const QUERY_LOGGER_CACHE_KEY = "queryLoggerApp"; // Zwischenspeicher für die Query Logger App { name, classPath }
-const CLIENT_IP_TTL_MS = 24 * 60 * 60 * 1000; // 24 Stunden
+const QUERY_LOGGER_CACHE_KEY = "queryLoggerApp";
+const CLIENT_IP_TTL_MS = 24 * 60 * 60 * 1000;
+const CLIENT_DETECTION_TIMEOUT_MS = 5000;
+const CLIENT_DETECTION_RETRY_MS = 250;
 
 const TEMP_ALLOW_MINUTES_KEY = "tempAllowMinutes";
 const LOG_WINDOW_SECONDS_KEY = "logWindowSeconds";
 
-const TEMP_ALLOW_PREFIX = "tempAllow::"; // Präfix für Alarme zur temporären Freigabe
-const TEMP_ALLOW_STATE_KEY = "tempAllowState"; // Speicherschlüssel für den Zustand der temporären Freigaben: { [domain]: expiresTs }
+const TEMP_ALLOW_PREFIX = "tempAllow::";
+const TEMP_ALLOW_STATE_KEY = "tempAllowState";
 
-// Stellt geplante Zustände (Alarme) nach einem Browser-Neustart oder einer Neuinstallation der Extension wieder her.
-// Service Worker in MV3 sind nicht persistent; sich allein auf den In-Memory-Zustand oder gespeicherte Alarme zu verlassen, ist fehleranfällig.
-// Daher stellen wir Timer- und Temp-Allow-Alarme aus chrome.storage.local wieder her.
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+export function getClusterTopology(sessionInfo) {
+  const info = sessionInfo?.info || {};
+  if (!info.clusterInitialized) {
+    return { clusterInitialized: false, nodes: [null], primaryNode: null };
+  }
+
+  const clusterNodes = Array.isArray(info.clusterNodes) ? info.clusterNodes : [];
+  const queryable = clusterNodes
+    .filter(
+      (node) =>
+        node?.name &&
+        (String(node.state).toLowerCase() === "self" ||
+          String(node.state).toLowerCase() === "connected"),
+    )
+    .map((node) => node.name);
+
+  const fallbackNodes = clusterNodes.filter((node) => node?.name).map((node) => node.name);
+  const nodes = queryable.length > 0 ? queryable : fallbackNodes;
+  const primaryNode =
+    clusterNodes.find((node) => String(node?.type).toLowerCase() === "primary")?.name ||
+    null;
+
+  return {
+    clusterInitialized: true,
+    nodes: nodes.length > 0 ? Array.from(new Set(nodes)) : [null],
+    primaryNode,
+  };
+}
+
+async function loadClusterTopology() {
+  try {
+    return getClusterTopology(await getSessionInfo());
+  } catch (e) {
+    console.warn(
+      "[Technitium] Cluster topology discovery failed; using local node:",
+      e,
+    );
+    return { clusterInitialized: false, nodes: [null], primaryNode: null };
+  }
+}
+
+export function isClientLocationCacheValid(
+  location,
+  detectedAt,
+  topology,
+  now = Date.now(),
+) {
+  if (!location?.clientIpAddress || !Number.isFinite(detectedAt)) return false;
+  if (now - detectedAt > CLIENT_IP_TTL_MS) return false;
+
+  if (!topology?.clusterInitialized) return location.node == null;
+  return (
+    typeof location.node === "string" &&
+    Array.isArray(topology.nodes) &&
+    topology.nodes.includes(location.node)
+  );
+}
+
+async function getCachedClientLocation(topology) {
+  const data = await chrome.storage.local.get([
+    CLIENT_LOCATION_CACHE_KEY,
+    LEGACY_CLIENT_IP_CACHE_KEY,
+    CLIENT_IP_CACHE_TS_KEY,
+  ]);
+
+  const detectedAt = data[CLIENT_IP_CACHE_TS_KEY];
+  const location = data[CLIENT_LOCATION_CACHE_KEY];
+
+  if (isClientLocationCacheValid(location, detectedAt, topology)) {
+    if (data[LEGACY_CLIENT_IP_CACHE_KEY]) {
+      await chrome.storage.local.remove(LEGACY_CLIENT_IP_CACHE_KEY);
+    }
+    return location;
+  }
+
+  const legacyIp = data[LEGACY_CLIENT_IP_CACHE_KEY];
+  if (
+    !topology.clusterInitialized &&
+    typeof legacyIp === "string" &&
+    legacyIp &&
+    Number.isFinite(detectedAt) &&
+    Date.now() - detectedAt <= CLIENT_IP_TTL_MS
+  ) {
+    const migrated = { clientIpAddress: legacyIp, node: null };
+    await chrome.storage.local.set({ [CLIENT_LOCATION_CACHE_KEY]: migrated });
+    await chrome.storage.local.remove(LEGACY_CLIENT_IP_CACHE_KEY);
+    return migrated;
+  }
+
+  await chrome.storage.local.remove([
+    CLIENT_LOCATION_CACHE_KEY,
+    LEGACY_CLIENT_IP_CACHE_KEY,
+    CLIENT_IP_CACHE_TS_KEY,
+  ]);
+  return null;
+}
+
+async function setCachedClientLocation(location) {
+  await chrome.storage.local.set({
+    [CLIENT_LOCATION_CACHE_KEY]: location,
+    [CLIENT_IP_CACHE_TS_KEY]: Date.now(),
+  });
+  await chrome.storage.local.remove(LEGACY_CLIENT_IP_CACHE_KEY);
+}
+
+async function clearCachedClientLocation() {
+  await chrome.storage.local.remove([
+    CLIENT_LOCATION_CACHE_KEY,
+    LEGACY_CLIENT_IP_CACHE_KEY,
+    CLIENT_IP_CACHE_TS_KEY,
+  ]);
+}
+
+export async function pollForClientLocation({
+  qname,
+  nodes,
+  queryLogger,
+  queryLogsFn = queryLogs,
+  now = Date.now,
+  sleepFn = sleep,
+  timeoutMs = CLIENT_DETECTION_TIMEOUT_MS,
+  intervalMs = CLIENT_DETECTION_RETRY_MS,
+}) {
+  const target = String(qname || "").toLowerCase();
+  const queryNodes = Array.isArray(nodes) && nodes.length > 0 ? nodes : [null];
+  const startedAt = now();
+
+  while (true) {
+    const queryTime = now();
+    const endIso = new Date(queryTime).toISOString();
+    const startIso = new Date(queryTime - 30 * 1000).toISOString();
+
+    const matches = await Promise.all(
+      queryNodes.map(async (node) => {
+        try {
+          const res = await queryLogsFn({
+            name: queryLogger.name,
+            classPath: queryLogger.classPath,
+            entriesPerPage: 10,
+            descendingOrder: true,
+            startIso,
+            endIso,
+            qname,
+            node: node || undefined,
+          });
+          const entries = res.response?.entries || [];
+          const entry = entries.find(
+            (item) =>
+              String(item?.qname || "").toLowerCase() === target &&
+              item?.clientIpAddress,
+          );
+          return entry
+            ? { clientIpAddress: entry.clientIpAddress, node: node || null }
+            : null;
+        } catch (_) {
+          return null;
+        }
+      }),
+    );
+
+    const match = matches.find(Boolean);
+    if (match) return match;
+
+    const elapsed = now() - startedAt;
+    if (elapsed >= timeoutMs) return null;
+
+    await sleepFn(Math.min(intervalMs, Math.max(0, timeoutMs - elapsed)));
+  }
+}
+
+export async function queryClientEntriesWithFailover({
+  location,
+  clusterInitialized,
+  queryParams,
+  queryLogsFn = queryLogs,
+  redetectFn,
+}) {
+  const queryAtLocation = async (currentLocation) => {
+    const res = await queryLogsFn({
+      ...queryParams,
+      clientIpAddress: currentLocation.clientIpAddress,
+      node: currentLocation.node || undefined,
+    });
+    return res.response?.entries || [];
+  };
+
+  let firstEntries;
+  let firstError = null;
+  try {
+    firstEntries = await queryAtLocation(location);
+  } catch (e) {
+    firstError = e;
+  }
+
+  if (!clusterInitialized) {
+    if (firstError) throw firstError;
+    return { location, entries: firstEntries };
+  }
+
+  if (!firstError && firstEntries.length > 0) {
+    return { location, entries: firstEntries };
+  }
+
+  const redetected = await redetectFn();
+  const sameLocation =
+    redetected?.clientIpAddress === location?.clientIpAddress &&
+    redetected?.node === location?.node;
+
+  if (sameLocation && !firstError) {
+    return { location: redetected, entries: firstEntries };
+  }
+
+  return {
+    location: redetected,
+    entries: await queryAtLocation(redetected),
+  };
+}
+
+async function queryEntriesAcrossNodes(topology, params) {
+  const results = await Promise.all(
+    topology.nodes.map(async (node) => {
+      try {
+        const res = await queryLogs({ ...params, node: node || undefined });
+        return { ok: true, entries: res.response?.entries || [] };
+      } catch (error) {
+        return { ok: false, error };
+      }
+    }),
+  );
+
+  const successes = results.filter((result) => result.ok);
+  if (successes.length === 0 && results.length > 0) {
+    throw results[0].error;
+  }
+
+  return successes.flatMap((result) => result.entries);
+}
+
+async function deleteCachedZoneEverywhere(domain) {
+  const topology = await loadClusterTopology();
+  await Promise.allSettled(
+    topology.nodes.map((node) => deleteCachedZone(domain, node || undefined)),
+  );
+}
+
 async function restoreScheduledState() {
   const now = Date.now();
-
-  // 1) Wiederherstellung des Timers für die temporäre Deaktivierung des Blockings
   const { blockingTempUntil } =
     await chrome.storage.local.get("blockingTempUntil");
 
@@ -45,7 +293,6 @@ async function restoreScheduledState() {
     }
   }
 
-  // 2) Wiederherstellung der temporären Freigaben für einzelne Domains
   const state = await getTempAllowState();
   const entries = Object.entries(state);
   if (entries.length === 0) return;
@@ -53,7 +300,6 @@ async function restoreScheduledState() {
   for (const [domain, expiresTs] of entries) {
     const when = Number(expiresTs);
     if (!Number.isFinite(when)) {
-      // Beschädigter Eintrag -> wird entfernt
       delete state[domain];
       continue;
     }
@@ -62,7 +308,6 @@ async function restoreScheduledState() {
     await chrome.alarms.clear(alarmName);
 
     if (when <= now) {
-      // Abgelaufen, während die Extension nicht lief -> jetzt aufräumen.
       try {
         await removeTempAllow(domain);
         delete state[domain];
@@ -79,7 +324,6 @@ async function restoreScheduledState() {
     await chrome.alarms.create(alarmName, { when });
   }
 
-  // Alle Aufräumarbeiten, die oben durchgeführt wurden, jetzt speichern.
   await setTempAllowState(state);
 }
 
@@ -91,8 +335,6 @@ async function clearTimerState() {
   await chrome.storage.local.remove(["blockingTempUntil"]);
 }
 
-// --- Hilfsfunktionen für den Temp-Allow-Zustand ---
-// Temp Allow = wir fügen eine Domain zu den "Allowed Zones" hinzu und entfernen sie später wieder.
 async function getTempAllowState() {
   const data = await chrome.storage.local.get(TEMP_ALLOW_STATE_KEY);
   return data[TEMP_ALLOW_STATE_KEY] || {};
@@ -104,16 +346,13 @@ async function setTempAllowState(state) {
 
 async function removeTempAllow(domain) {
   await deleteAllowedZone(domain);
-  try {
-    await deleteCachedZone(domain);
-  } catch (_) {}
+  await deleteCachedZoneEverywhere(domain);
 
   const state = await getTempAllowState();
   delete state[domain];
   await setTempAllowState(state);
 }
 
-// Stellt Alarme/Zustände nach Installation, Update oder Browser-Neustart wieder her.
 chrome.runtime.onInstalled.addListener(() => {
   restoreScheduledState().catch((e) =>
     console.warn("[Technitium] restoreScheduledState (onInstalled) failed:", e),
@@ -126,7 +365,6 @@ chrome.runtime.onStartup.addListener(() => {
   );
 });
 
-// --- Alarm-Listener ---
 chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name === TIMER_ALARM) {
     try {
@@ -148,10 +386,6 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
     }
   }
 });
-
-function sleep(ms) {
-  return new Promise((r) => setTimeout(r, ms));
-}
 
 async function getOptionNumber(key, defaultValue) {
   const data = await chrome.storage.local.get(key);
@@ -199,30 +433,12 @@ async function detectQueryLoggerApp() {
   throw new Error("Kein Query Logger DNS App gefunden (apps/list).");
 }
 
-async function getCachedClientIp() {
-  const data = await chrome.storage.local.get([
-    CLIENT_IP_CACHE_KEY,
-    CLIENT_IP_CACHE_TS_KEY,
-  ]);
-  const ip = data[CLIENT_IP_CACHE_KEY];
-  const ts = data[CLIENT_IP_CACHE_TS_KEY];
-  if (!ip || !ts) return null;
-  if (Date.now() - ts > CLIENT_IP_TTL_MS) return null;
-  return ip;
-}
-
-async function setCachedClientIp(ip) {
-  await chrome.storage.local.set({
-    [CLIENT_IP_CACHE_KEY]: ip,
-    [CLIENT_IP_CACHE_TS_KEY]: Date.now(),
-  });
-}
-
-// Trick: Wir erzeugen eine "fake" Web-Anfrage, damit der DNS-Server sie protokolliert.
-// Anschließend suchen wir nach diesem qname in den `logs/query`-Ergebnissen und extrahieren die `clientIpAddress`.
-async function inferClientIpFromLogs() {
-  const cached = await getCachedClientIp();
-  if (cached) return cached;
+async function inferClientLocationFromLogs({ force = false } = {}) {
+  const topology = await loadClusterTopology();
+  if (!force) {
+    const cached = await getCachedClientLocation(topology);
+    if (cached) return { location: cached, topology };
+  }
 
   const qname = `ttip-${Date.now()}-${Math.random().toString(16).slice(2)}.example.com`;
 
@@ -230,36 +446,21 @@ async function inferClientIpFromLogs() {
     await fetch(`https://${qname}/`, { mode: "no-cors" });
   } catch (_) {}
 
-  await sleep(600);
-
   const ql = await detectQueryLoggerApp();
-
-  const endIso = new Date().toISOString();
-  const startIso = new Date(Date.now() - 30 * 1000).toISOString();
-
-  const res = await queryLogs({
-    name: ql.name,
-    classPath: ql.classPath,
-    entriesPerPage: 10,
-    descendingOrder: true,
-    startIso,
-    endIso,
+  const location = await pollForClientLocation({
     qname,
+    nodes: topology.nodes,
+    queryLogger: ql,
   });
 
-  const entries = res.response?.entries || [];
-  const entry = entries.find(
-    (e) => (e.qname || "").toLowerCase() === qname.toLowerCase(),
-  );
-
-  if (!entry?.clientIpAddress) {
+  if (!location) {
     throw new Error(
       "Client-IP konnte nicht ermittelt werden (keine Log-Entry gefunden).",
     );
   }
 
-  await setCachedClientIp(entry.clientIpAddress);
-  return entry.clientIpAddress;
+  await setCachedClientLocation(location);
+  return { location, topology };
 }
 
 function normalizeDomain(qname) {
@@ -268,9 +469,6 @@ function normalizeDomain(qname) {
 }
 
 function isBlockedLogEntry(e) {
-  // Heuristik zur Erkennung, ob ein Log-Eintrag einen geblockten Request darstellt:
-  // - Der `responseType` enthält "blocked" (z.B. "Blocked", "CacheBlocked", "UpstreamBlocked").
-  // - Oder der `RCODE` deutet auf `NXDOMAIN` hin (typisch für NXDOMAIN-Blocking).
   const rtRaw = e.responseType;
   const rt =
     typeof rtRaw === "string" ? rtRaw.toLowerCase() : String(rtRaw || "");
@@ -280,12 +478,11 @@ function isBlockedLogEntry(e) {
 
   if (rt.includes("blocked")) return true;
   if (rc.includes("nxdomain")) return true;
-
   return false;
 }
 
 function aggregateBlocked(entries) {
-  const map = new Map(); // domain -> { domain, count, lastSeen }
+  const map = new Map();
   for (const e of entries) {
     if (!isBlockedLogEntry(e)) continue;
 
@@ -313,6 +510,7 @@ async function findBlockedForDomain(domain, options = {}) {
   if (!dNorm) return null;
 
   const ql = await detectQueryLoggerApp();
+  const topology = await loadClusterTopology();
 
   let startIso;
   let endIso;
@@ -327,7 +525,7 @@ async function findBlockedForDomain(domain, options = {}) {
     startIso = new Date(Date.now() - seconds * 1000).toISOString();
   }
 
-  const res = await queryLogs({
+  const entries = await queryEntriesAcrossNodes(topology, {
     name: ql.name,
     classPath: ql.classPath,
     entriesPerPage: 200,
@@ -335,17 +533,10 @@ async function findBlockedForDomain(domain, options = {}) {
     startIso,
     endIso,
     qname: dNorm,
-    // Hier wird absichtlich KEIN `clientIpAddress`-Filter verwendet.
-    // `findBlockedForDomain` dient als robuste Fallback-Abfrage für eine spezifische Domain,
-    // auch in Umgebungen, in denen die vom Query-Logger protokollierte Client-IP nicht
-    // exakt mit der über `inferClientIpFromLogs` ermittelten IP übereinstimmt.
   });
-
-  const entries = res.response?.entries || [];
 
   let count = 0;
   let lastSeen = null;
-
   for (const e of entries) {
     if (normalizeDomain(e.qname) !== dNorm) continue;
     if (!isBlockedLogEntry(e)) continue;
@@ -355,25 +546,18 @@ async function findBlockedForDomain(domain, options = {}) {
   }
 
   if (count === 0) return null;
-
   return { domain: dNorm, count, lastSeen };
 }
 
-// Heuristik: Wenn `/allowed/list?domain=X` ein sinnvolles Ergebnis zurückgibt,
-// betrachten wir X als "erlaubt".
-async function isDomainAllowed(domain) {
+async function isDomainAllowed(domain, primaryNode) {
   const d = normalizeDomain(domain);
   if (!d) return false;
 
-  const res = await listAllowed(d);
+  const res = await listAllowed(d, primaryNode || undefined);
   const r = res.response || {};
-
-  // In vielen Konfigurationen liefert `allowed/list` für eine existierende Allowed-Zone Records (z.B. SOA/NS).
-  // Wenn sie nicht existiert, ist die Antwort oft `domain=root` oder `records` ist leer.
   const records = Array.isArray(r.records) ? r.records : [];
   const zones = Array.isArray(r.zones) ? r.zones : [];
 
-  // Robuste Prüfung: "erlaubt", wenn entweder `records` oder `zones` vorhanden sind UND der Domain-Name (annähernd) passt.
   if (
     (records.length > 0 || zones.length > 0) &&
     String(r.domain || "")
@@ -383,14 +567,13 @@ async function isDomainAllowed(domain) {
     return true;
   }
 
-  // Fallback: Wenn `records` oder `zones` nicht leer sind, nehmen wir an, die Domain ist erlaubt.
   return records.length > 0 || zones.length > 0;
 }
 
-// Führt eine Batch-Überprüfung für mehrere Domains mit begrenzter Parallelität durch.
 async function allowedStatusBatch(domains) {
   const list = (domains || []).map(normalizeDomain).filter(Boolean);
   const unique = Array.from(new Set(list));
+  const topology = await loadClusterTopology();
 
   const allowed = {};
   const concurrency = 5;
@@ -401,7 +584,7 @@ async function allowedStatusBatch(domains) {
       const i = idx++;
       const d = unique[i];
       try {
-        allowed[d] = await isDomainAllowed(d);
+        allowed[d] = await isDomainAllowed(d, topology.primaryNode);
       } catch (_) {
         allowed[d] = false;
       }
@@ -417,18 +600,14 @@ async function allowedStatusBatch(domains) {
   return { enabled: true, allowed };
 }
 
-// ===== Nachrichten-Listener =====
-// Behandelt eingehende Nachrichten von anderen Teilen der Extension (z.B. dem Popup).
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   (async () => {
     try {
       if (msg.action === "status") {
         const settings = await getDnsSettings();
         const enableBlocking = !!settings.response?.enableBlocking;
-
         const { blockingTempUntil } =
           await chrome.storage.local.get("blockingTempUntil");
-
         sendResponse({
           ok: true,
           enableBlocking,
@@ -456,29 +635,19 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       if (msg.action === "tempDisable") {
         const minutes = Math.max(1, Math.floor(msg.minutes || 5));
         await temporaryDisableBlocking(minutes);
-
         const untilTs = Date.now() + minutes * 60 * 1000;
         await setTimerState(untilTs);
-
         await chrome.alarms.clear(TIMER_ALARM);
         await chrome.alarms.create(TIMER_ALARM, { when: untilTs });
-
         sendResponse({ ok: true, tempUntil: untilTs });
         return;
       }
 
-      // ===== Liste der geblockten Domains abrufen =====
       if (msg.action === "blockedList") {
-        // Wichtig: Wir filtern die Block-Liste nach der Client-IP,
-        // damit in Multi-Client-Umgebungen nur die Anfragen des aktuellen Geräts angezeigt werden.
-        // Die Client-IP wird über `inferClientIpFromLogs()` per "Magic IP"-Trick
-        // gegen den Query-Logger ermittelt.
-        const clientIp = await inferClientIpFromLogs();
-
+        let detected = await inferClientLocationFromLogs();
         const ql = await detectQueryLoggerApp();
 
         let startIso, endIso;
-
         if (msg.startIso && msg.endIso) {
           startIso = msg.startIso;
           endIso = msg.endIso;
@@ -495,24 +664,29 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           startIso = new Date(Date.now() - seconds * 1000).toISOString();
         }
 
-        const res = await queryLogs({
-          name: ql.name,
-          classPath: ql.classPath,
-          entriesPerPage: 300,
-          descendingOrder: true,
-          startIso,
-          endIso,
-          clientIpAddress: clientIp,
+        const result = await queryClientEntriesWithFailover({
+          location: detected.location,
+          clusterInitialized: detected.topology.clusterInitialized,
+          queryParams: {
+            name: ql.name,
+            classPath: ql.classPath,
+            entriesPerPage: 300,
+            descendingOrder: true,
+            startIso,
+            endIso,
+          },
+          redetectFn: async () => {
+            await clearCachedClientLocation();
+            detected = await inferClientLocationFromLogs({ force: true });
+            return detected.location;
+          },
         });
 
-        const entries = res.response?.entries || [];
-        const items = aggregateBlocked(entries);
-
+        const items = aggregateBlocked(result.entries);
         sendResponse({ ok: true, items });
         return;
       }
 
-      // ===== Geblockte Einträge für eine spezifische Domain abrufen =====
       if (msg.action === "blockedForDomain") {
         const domain = normalizeDomain(msg.domain);
         if (!domain) {
@@ -525,12 +699,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           endIso: msg.endIso,
           seconds: msg.seconds,
         });
-
         sendResponse({ ok: true, item });
         return;
       }
 
-      // ===== Domain dauerhaft erlauben =====
       if (msg.action === "allowDomain") {
         const domain = normalizeDomain(msg.domain);
         if (!domain) {
@@ -539,15 +711,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         }
 
         await allowZone(domain);
-        try {
-          await deleteCachedZone(domain);
-        } catch (_) {}
-
+        await deleteCachedZoneEverywhere(domain);
         sendResponse({ ok: true });
         return;
       }
 
-      // ===== Dauerhafte Freigabe entfernen =====
       if (msg.action === "removeAllowDomain") {
         const domain = normalizeDomain(msg.domain);
         if (!domain) {
@@ -556,15 +724,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         }
 
         await deleteAllowedZone(domain);
-        try {
-          await deleteCachedZone(domain);
-        } catch (_) {}
-
+        await deleteCachedZoneEverywhere(domain);
         sendResponse({ ok: true });
         return;
       }
 
-      // ===== Domain temporär erlauben =====
       if (msg.action === "tempAllowDomain") {
         const domain = normalizeDomain(msg.domain);
         if (!domain) {
@@ -579,12 +743,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         const minutes = Math.max(1, Math.floor(msg.minutes || minutesDefault));
 
         await allowZone(domain);
-        try {
-          await deleteCachedZone(domain);
-        } catch (_) {}
+        await deleteCachedZoneEverywhere(domain);
 
         const expiresTs = Date.now() + minutes * 60 * 1000;
-
         const state = await getTempAllowState();
         state[domain] = expiresTs;
         await setTempAllowState(state);
@@ -592,12 +753,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         const alarmName = `${TEMP_ALLOW_PREFIX}${domain}`;
         await chrome.alarms.clear(alarmName);
         await chrome.alarms.create(alarmName, { when: expiresTs });
-
         sendResponse({ ok: true, expiresTs });
         return;
       }
 
-      // ===== Batch-Prüfung des Allow-Status =====
       if (msg.action === "allowedStatusBatch") {
         const domains = Array.isArray(msg.domains) ? msg.domains : [];
         const res = await allowedStatusBatch(domains);
