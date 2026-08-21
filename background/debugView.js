@@ -557,10 +557,12 @@ export function summarizeDnsClientResponse(response = {}) {
   const answers = getAnswers(result).map(formatAnswer).filter(Boolean).slice(0, 10);
   const extendedErrors = extractExtendedErrors(result);
   const dnssecError = extendedErrors.find((error) => isDnssecEdeCode(error?.code));
+  const firstExtendedError = extendedErrors[0] || null;
   const payloadWarning = payload?.warningMessage ?? payload?.WarningMessage ?? null;
   const warning = dnssecError
     ? `DNSSEC validation failure: ${formatExtendedError(dnssecError)}`
-    : payloadWarning;
+    : payloadWarning ||
+      (firstExtendedError ? `EDE: ${formatExtendedError(firstExtendedError)}` : null);
 
   return {
     ok: lower(rcode) === "noerror",
