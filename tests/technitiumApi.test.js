@@ -55,6 +55,20 @@ test("queryLogs preserves standalone behavior when node is omitted", async () =>
   assert.equal(url.searchParams.has("node"), false);
 });
 
+test("queryLogs can filter a DNS record type", async () => {
+  await api.queryLogs({
+    name: "Query Logs (Sqlite)",
+    classPath: "QueryLogger",
+    qname: "fitgirl-repacks.site",
+    qtype: "AAAA",
+  });
+
+  const url = new URL(requests[0].url);
+  assert.equal(url.pathname, "/api/logs/query");
+  assert.equal(url.searchParams.get("qname"), "fitgirl-repacks.site");
+  assert.equal(url.searchParams.get("qtype"), "AAAA");
+});
+
 test("getSessionInfo reads cluster metadata without admin-only APIs", async () => {
   assert.equal(typeof api.getSessionInfo, "function");
 
