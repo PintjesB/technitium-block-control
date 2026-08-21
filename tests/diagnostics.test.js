@@ -8,6 +8,7 @@ import {
   diagnosePageCorrelation,
   traceNonCachedDnsOrigin,
   needsDnsOriginTrace,
+  cachedServerFailureQtypes,
 } from "../background/diagnostics.js";
 
 test("diagnostic URL sanitization keeps routing context but removes query and fragment values", () => {
@@ -232,5 +233,18 @@ test("origin tracing is limited to cached ServerFailure results", () => {
       },
     ]),
     false,
+  );
+});
+
+test("cached SERVFAIL qtypes are deduplicated and exclude unrelated outcomes", () => {
+  assert.deepEqual(
+    cachedServerFailureQtypes([
+      { responseType: "Cached", rcode: "ServerFailure", qtype: "AAAA" },
+      { responseType: "Cached", rcode: "ServerFailure", qtype: "A" },
+      { responseType: "Cached", rcode: "ServerFailure", qtype: "AAAA" },
+      { responseType: "Cached", rcode: "NoError", qtype: "HTTPS" },
+      { responseType: "Recursive", rcode: "ServerFailure", qtype: "A" },
+    ]),
+    ["AAAA", "A"],
   );
 });
