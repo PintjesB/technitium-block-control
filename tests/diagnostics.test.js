@@ -6,6 +6,9 @@ import {
   sanitizeDiagnosticValue,
   formatDiagnosticReport,
   diagnosePageCorrelation,
+  traceNonCachedDnsOrigin,
+  needsDnsOriginTrace,
+  cachedServerFailureQtypes,
 } from "../background/diagnostics.js";
 
 test("diagnostic URL sanitization keeps routing context but removes query and fragment values", () => {
@@ -142,5 +145,106 @@ test("diagnostic decision reports when every exact-node query failed", () => {
       matchedInGeneralList: false,
     }).code,
     "exact-query-failed",
+  );
+});
+
+test("SERVFAIL origin trace skips cached pages and returns the nearest non-cached entry", async () => {
+  const pages = [
+    [
+      { timestamp: "2026-08-21T16:33:36Z", responseType: "Cached", rcode: "ServerFailure" },
+      { timestamp: "2026-08-21T16:33:35Z", responseType: "Cached", rcode: "ServerFailure" },
+    ],
+    [
+      { timestamp: "2026-08-21T16:33:34Z", responseType: "Cached", rcode: "ServerFailure" },
+      { timestamp: "2026-08-21T16:33:33Z", responseType: "Recursive", rcode: "ServerFailure" },
+      { timestamp: "2026-08-21T16:33:32Z", responseType: "Recursive", rcode: "NoError" },
+    ],
+  ];
+  const requestedPages = [];
+
+  const result = await traceNonCachedDnsOrigin({
+    fetchPage: async (pageNumber) => {
+      requestedPages.push(pageNumber);
+      return pages[pageNumber - 1] || [];
+    },
+    maxPages: 20,
+  });
+
+  assert.deepEqual(requestedPages, [1, 2]);
+  assert.equal(result.found, true);
+  assert.equal(result.pagesScanned, 2);
+  assert.equal(result.cachedEntriesSkipped, 3);
+  assert.deepEqual(result.entry, {
+    timestamp: "2026-08-21T16:33:33Z",
+    responseType: "Recursive",
+    rcode: "ServerFailure",
+  });
+});
+
+test("SERVFAIL origin trace stops when history is exhausted without a non-cached entry", async () => {
+  const requestedPages = [];
+  const result = await traceNonCachedDnsOrigin({
+    fetchPage: async (pageNumber) => {
+      requestedPages.push(pageNumber);
+      if (pageNumber === 1) {
+        return [{ responseType: "Cached", rcode: "ServerFailure" }];
+      }
+      return [];
+    },
+    maxPages: 20,
+  });
+
+  assert.deepEqual(requestedPages, [1, 2]);
+  assert.deepEqual(result, {
+    found: false,
+    pagesScanned: 2,
+    cachedEntriesSkipped: 1,
+    exhausted: true,
+    entry: null,
+  });
+});
+
+test("origin tracing is limited to cached ServerFailure results", () => {
+  assert.equal(
+    needsDnsOriginTrace([
+      {
+        ok: true,
+        entries: [{ responseType: "Cached", rcode: "ServerFailure" }],
+      },
+    ]),
+    true,
+  );
+
+  assert.equal(
+    needsDnsOriginTrace([
+      {
+        ok: true,
+        entries: [{ responseType: "Cached", rcode: "NoError" }],
+      },
+    ]),
+    false,
+  );
+
+  assert.equal(
+    needsDnsOriginTrace([
+      {
+        ok: true,
+        entries: [{ responseType: "Recursive", rcode: "ServerFailure" }],
+      },
+    ]),
+    false,
+  );
+});
+
+test("cached SERVFAIL qtypes are deduplicated and exclude unrelated outcomes", () => {
+  assert.deepEqual(
+    cachedServerFailureQtypes([
+      { responseType: "Cached", rcode: "ServerFailure", qtype: "AAAA" },
+      { responseType: "Cached", rcode: "ServerFailure", qtype: "A" },
+      { responseType: "Cached", rcode: "ServerFailure", qtype: "AAAA" },
+      { responseType: "Cached", rcode: "NoError", qtype: "HTTPS" },
+      { responseType: "Recursive", rcode: "ServerFailure", qtype: "A" },
+    ]),
+    ["AAAA", "A"],
   );
 });

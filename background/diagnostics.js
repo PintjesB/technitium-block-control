@@ -118,3 +118,86 @@ export function diagnosePageCorrelation({
       "Technitium returned no exact page-domain entry for the detected client and diagnostic time window.",
   };
 }
+
+export function needsDnsOriginTrace(exactNodeResults = []) {
+  return exactNodeResults.some((result) =>
+    (result?.entries || []).some((entry) => {
+      const responseType = String(entry?.responseType || "").toLowerCase();
+      const rcode = String(entry?.rcode || entry?.RCODE || "").toLowerCase();
+      return responseType === "cached" && rcode === "serverfailure";
+    }),
+  );
+}
+
+export function cachedServerFailureQtypes(entries = []) {
+  const qtypes = [];
+  const seen = new Set();
+
+  for (const entry of entries || []) {
+    const responseType = String(entry?.responseType || "").toLowerCase();
+    const rcode = String(entry?.rcode || entry?.RCODE || "").toLowerCase();
+    const qtype = entry?.qtype ? String(entry.qtype) : null;
+
+    if (responseType !== "cached" || rcode !== "serverfailure" || !qtype) {
+      continue;
+    }
+
+    if (!seen.has(qtype)) {
+      seen.add(qtype);
+      qtypes.push(qtype);
+    }
+  }
+
+  return qtypes;
+}
+
+export async function traceNonCachedDnsOrigin({
+  fetchPage,
+  maxPages = 20,
+}) {
+  if (typeof fetchPage !== "function") {
+    throw new TypeError("fetchPage must be a function");
+  }
+
+  const boundedMaxPages = Math.max(1, Math.floor(maxPages || 1));
+  let cachedEntriesSkipped = 0;
+
+  for (let pageNumber = 1; pageNumber <= boundedMaxPages; pageNumber += 1) {
+    const entries = await fetchPage(pageNumber);
+    const pageEntries = Array.isArray(entries) ? entries : [];
+
+    if (pageEntries.length === 0) {
+      return {
+        found: false,
+        pagesScanned: pageNumber,
+        cachedEntriesSkipped,
+        exhausted: true,
+        entry: null,
+      };
+    }
+
+    for (const entry of pageEntries) {
+      const responseType = String(entry?.responseType || "").toLowerCase();
+      if (responseType === "cached") {
+        cachedEntriesSkipped += 1;
+        continue;
+      }
+
+      return {
+        found: true,
+        pagesScanned: pageNumber,
+        cachedEntriesSkipped,
+        exhausted: false,
+        entry,
+      };
+    }
+  }
+
+  return {
+    found: false,
+    pagesScanned: boundedMaxPages,
+    cachedEntriesSkipped,
+    exhausted: false,
+    entry: null,
+  };
+}

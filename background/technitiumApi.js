@@ -99,6 +99,7 @@ export async function queryLogs(params) {
     clientIpAddress,
     responseType,
     qname,
+    qtype,
     node,
   } = params || {};
 
@@ -113,6 +114,7 @@ export async function queryLogs(params) {
   if (clientIpAddress) qs.set("clientIpAddress", clientIpAddress);
   if (responseType) qs.set("responseType", responseType);
   if (qname) qs.set("qname", qname);
+  if (qtype) qs.set("qtype", qtype);
   if (node) qs.set("node", node);
 
   return technitiumRequest(`/logs/query?${qs.toString()}`);
