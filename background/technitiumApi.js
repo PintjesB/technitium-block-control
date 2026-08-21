@@ -120,6 +120,36 @@ export async function queryLogs(params) {
   return technitiumRequest(`/logs/query?${qs.toString()}`);
 }
 
+// ===== DNS client =====
+
+// Runs a read-only DNS Client query from Technitium. This is used only by the
+// optional Deep DNS debug test and requires DNS Client/View permission.
+// GET /api/dnsClient/resolve?server=...&domain=...&type=A&protocol=UDP
+export async function resolveDns(params) {
+  const {
+    server = "this-server",
+    domain,
+    type = "A",
+    protocol = "UDP",
+    dnssec = false,
+    eDnsClientSubnet,
+    node,
+  } = params || {};
+
+  if (!domain) throw new Error("DNS client query requires a domain");
+
+  const qs = new URLSearchParams();
+  qs.set("server", server);
+  qs.set("domain", domain);
+  qs.set("type", type);
+  qs.set("protocol", protocol);
+  qs.set("dnssec", dnssec ? "true" : "false");
+  if (eDnsClientSubnet) qs.set("eDnsClientSubnet", eDnsClientSubnet);
+  if (node) qs.set("node", node);
+
+  return technitiumRequest(`/dnsClient/resolve?${qs.toString()}`);
+}
+
 // ===== Allowed zones =====
 
 // Adds a domain to the allow list.
