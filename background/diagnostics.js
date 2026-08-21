@@ -129,6 +129,28 @@ export function needsDnsOriginTrace(exactNodeResults = []) {
   );
 }
 
+export function cachedServerFailureQtypes(entries = []) {
+  const qtypes = [];
+  const seen = new Set();
+
+  for (const entry of entries || []) {
+    const responseType = String(entry?.responseType || "").toLowerCase();
+    const rcode = String(entry?.rcode || entry?.RCODE || "").toLowerCase();
+    const qtype = entry?.qtype ? String(entry.qtype) : null;
+
+    if (responseType !== "cached" || rcode !== "serverfailure" || !qtype) {
+      continue;
+    }
+
+    if (!seen.has(qtype)) {
+      seen.add(qtype);
+      qtypes.push(qtype);
+    }
+  }
+
+  return qtypes;
+}
+
 export async function traceNonCachedDnsOrigin({
   fetchPage,
   maxPages = 20,
