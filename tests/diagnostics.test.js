@@ -7,6 +7,7 @@ import {
   formatDiagnosticReport,
   diagnosePageCorrelation,
   traceNonCachedDnsOrigin,
+  needsDnsOriginTrace,
 } from "../background/diagnostics.js";
 
 test("diagnostic URL sanitization keeps routing context but removes query and fragment values", () => {
@@ -200,4 +201,36 @@ test("SERVFAIL origin trace stops when history is exhausted without a non-cached
     exhausted: true,
     entry: null,
   });
+});
+
+test("origin tracing is limited to cached ServerFailure results", () => {
+  assert.equal(
+    needsDnsOriginTrace([
+      {
+        ok: true,
+        entries: [{ responseType: "Cached", rcode: "ServerFailure" }],
+      },
+    ]),
+    true,
+  );
+
+  assert.equal(
+    needsDnsOriginTrace([
+      {
+        ok: true,
+        entries: [{ responseType: "Cached", rcode: "NoError" }],
+      },
+    ]),
+    false,
+  );
+
+  assert.equal(
+    needsDnsOriginTrace([
+      {
+        ok: true,
+        entries: [{ responseType: "Recursive", rcode: "ServerFailure" }],
+      },
+    ]),
+    false,
+  );
 });
