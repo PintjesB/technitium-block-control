@@ -122,6 +122,9 @@ if (chrome.webNavigation?.onErrorOccurred?.addListener) {
 if (chrome.webNavigation?.onCommitted?.addListener) {
   chrome.webNavigation.onCommitted.addListener((details) => {
     if (details.frameId !== 0) return;
+    if (String(details.url || "").toLowerCase().startsWith("chrome-error://")) {
+      return;
+    }
     clearFailedNavigation(details.tabId).catch((error) =>
       console.warn("[Technitium] Failed to clear navigation error:", error),
     );
@@ -607,6 +610,7 @@ function summarizeBlockedDomain(domain, entries) {
 
 export async function pollForBlockedDomain({
   domain,
+  clientIpAddress,
   nodes,
   queryLogger,
   startIso,
@@ -634,6 +638,7 @@ export async function pollForBlockedDomain({
             descendingOrder: true,
             startIso,
             endIso,
+            clientIpAddress,
             qname: dNorm,
             node: node || undefined,
           });
@@ -691,7 +696,7 @@ async function findBlockedForDomain(domain, options = {}) {
   if (!dNorm) return null;
 
   const ql = await detectQueryLogsApp();
-  const topology = await loadClusterTopology();
+  const detected = await inferClientLocationFromLogs();
 
   let startIso;
   let endIso;
@@ -708,7 +713,8 @@ async function findBlockedForDomain(domain, options = {}) {
 
   return pollForBlockedDomain({
     domain: dNorm,
-    nodes: topology.nodes,
+    clientIpAddress: detected.location.clientIpAddress,
+    nodes: detected.topology.nodes,
     queryLogger: ql,
     startIso,
     endIso,
