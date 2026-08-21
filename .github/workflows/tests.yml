@@ -19,5 +19,8 @@ jobs:
         with:
           node-version: "22"
 
+      - name: Check JavaScript syntax
+        run: find background common options popup tests -name '*.js' -print0 | xargs -0 -n1 node --check
+
       - name: Run tests
         run: npm test
