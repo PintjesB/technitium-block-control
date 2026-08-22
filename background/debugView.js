@@ -342,6 +342,11 @@ function recordChain(record) {
   return current || origin || "No result";
 }
 
+function formatExtendedError(error) {
+  if (!error) return null;
+  return [error.label || error.code, error.text].filter(Boolean).join(" — ");
+}
+
 export function formatShortDebugSummary(view, report = {}) {
   const lines = [
     "Technitium Adblock Control Debug",
@@ -363,6 +368,15 @@ export function formatShortDebugSummary(view, report = {}) {
   if (view?.likelyCause?.label) {
     lines.push(`Likely cause (${view.likelyCause.kind}): ${view.likelyCause.label}`);
   }
+
+  const deepDnsDiagnosis = summarizeDeepDnsDiagnosis(
+    report?.technitium?.deepDnsTest?.results || [],
+  );
+  if (deepDnsDiagnosis) {
+    lines.push(`Deep DNS: ${deepDnsDiagnosis.title}`);
+    if (deepDnsDiagnosis.detail) lines.push(`- ${deepDnsDiagnosis.detail}`);
+  }
+
   if (report?.meta?.correlationId) lines.push(`Correlation: ${report.meta.correlationId}`);
   return lines.join("\n");
 }
@@ -431,12 +445,124 @@ function formatAnswer(record) {
     .join(" ");
 }
 
+function humanizeEdeCode(value) {
+  const code = String(value || "").trim();
+  if (!code) return "Unknown EDE";
+
+  return code
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/^Dnssec\b/i, "DNSSEC")
+    .replace(/^Dnskey\b/i, "DNSKEY")
+    .replace(/^Rrsig/i, "RRSIG")
+    .replace(/^Nsec\b/i, "NSEC");
+}
+
+function isDnssecEdeCode(value) {
+  const code = lower(value).replace(/[^a-z0-9]/g, "");
+  return (
+    code.includes("signature") ||
+    code.includes("dnssec") ||
+    code.includes("dnskey") ||
+    code.includes("rrsig") ||
+    code.includes("nsec") ||
+    code.includes("zonekey") ||
+    code.includes("dsdigest")
+  );
+}
+
+function addExtendedError(target, seen, value, source) {
+  const code = value?.InfoCode ?? value?.infoCode ?? value?.Code ?? value?.code;
+  if (!code) return;
+
+  const textValue = value?.ExtraText ?? value?.extraText ?? value?.Text ?? value?.text;
+  const text = textValue == null || String(textValue).trim() === ""
+    ? null
+    : String(textValue).trim();
+  const key = `${lower(code)}|${lower(text)}`;
+  if (seen.has(key)) return;
+  seen.add(key);
+
+  target.push({
+    code: String(code),
+    label: humanizeEdeCode(code),
+    text,
+    source,
+  });
+}
+
+function addExtendedErrorOptions(target, seen, options, source) {
+  for (const option of Array.isArray(options) ? options : []) {
+    const optionCode = String(option?.Code ?? option?.code ?? "").toUpperCase();
+    if (optionCode !== "EXTENDED_DNS_ERROR") continue;
+    addExtendedError(target, seen, option?.Data ?? option?.data, source);
+  }
+}
+
+function extractExtendedErrors(result) {
+  const errors = [];
+  const seen = new Set();
+
+  addExtendedErrorOptions(
+    errors,
+    seen,
+    result?.EDNS?.Options ?? result?.edns?.options,
+    "response",
+  );
+
+  for (const error of result?.DnsClientExtendedErrors ?? result?.dnsClientExtendedErrors ?? []) {
+    addExtendedError(errors, seen, error, "client");
+  }
+
+  for (const record of result?.Additional ?? result?.additional ?? []) {
+    const type = String(record?.Type ?? record?.type ?? "").toUpperCase();
+    if (type !== "OPT") continue;
+    addExtendedErrorOptions(
+      errors,
+      seen,
+      record?.RDATA?.Options ?? record?.rdata?.options,
+      "response",
+    );
+  }
+
+  return errors;
+}
+
+export function summarizeDeepDnsDiagnosis(results = []) {
+  const ordered = [
+    ...results.filter((result) => result?.resolverId === "this-server"),
+    ...results.filter((result) => result?.resolverId !== "this-server"),
+  ];
+
+  for (const result of ordered) {
+    const dnssecError = (result?.extendedErrors || []).find((error) =>
+      isDnssecEdeCode(error?.code),
+    );
+    if (!dnssecError) continue;
+
+    return {
+      status: "error",
+      title: "DNSSEC validation failure",
+      detail: formatExtendedError(dnssecError),
+      kind: "confirmed",
+    };
+  }
+
+  return null;
+}
+
 export function summarizeDnsClientResponse(response = {}) {
   const payload = response?.response || response;
   const result = payload?.result || payload?.Result || payload;
   const rcode = getRcode(result);
   const answers = getAnswers(result).map(formatAnswer).filter(Boolean).slice(0, 10);
-  const warning = payload?.warningMessage ?? payload?.WarningMessage ?? null;
+  const extendedErrors = extractExtendedErrors(result);
+  const dnssecError = extendedErrors.find((error) => isDnssecEdeCode(error?.code));
+  const firstExtendedError = extendedErrors[0] || null;
+  const payloadWarning = payload?.warningMessage ?? payload?.WarningMessage ?? null;
+  const warning = dnssecError
+    ? `DNSSEC validation failure: ${formatExtendedError(dnssecError)}`
+    : payloadWarning ||
+      (firstExtendedError ? `EDE: ${formatExtendedError(firstExtendedError)}` : null);
 
   return {
     ok: lower(rcode) === "noerror",
@@ -444,5 +570,6 @@ export function summarizeDnsClientResponse(response = {}) {
     answerCount: getAnswers(result).length,
     answers,
     warning,
+    extendedErrors,
   };
 }

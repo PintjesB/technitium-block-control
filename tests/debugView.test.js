@@ -5,6 +5,7 @@ import {
   buildDebugViewModel,
   buildDeepDnsPlan,
   formatShortDebugSummary,
+  summarizeDeepDnsDiagnosis,
   summarizeDnsClientResponse,
 } from "../background/debugView.js";
 
@@ -115,6 +116,50 @@ function baseReport() {
   };
 }
 
+function dnssecFailureDnsClientResponse() {
+  const signatureExpired = {
+    Code: "EXTENDED_DNS_ERROR",
+    Data: {
+      InfoCode: "SignatureExpired",
+      ExtraText: "dnssec-broken.example.test DNSKEY IN",
+    },
+  };
+  const noAuthority = {
+    Code: "EXTENDED_DNS_ERROR",
+    Data: {
+      InfoCode: "NoReachableAuthority",
+      ExtraText: "https://resolver.example/dns-query returned RCODE=ServerFailure for ns1.example.test. A IN",
+    },
+  };
+
+  return {
+    response: {
+      result: {
+        RCODE: "ServerFailure",
+        Answer: [],
+        EDNS: {
+          ExtendedRCODE: "ServerFailure",
+          Options: [signatureExpired, noAuthority],
+        },
+        DnsClientExtendedErrors: [
+          {
+            InfoCode: "SignatureExpired",
+            ExtraText: "dnssec-broken.example.test DNSKEY IN",
+          },
+        ],
+        Additional: [
+          {
+            Type: "OPT",
+            RDATA: {
+              Options: [signatureExpired, noAuthority],
+            },
+          },
+        ],
+      },
+    },
+  };
+}
+
 test("visual debug model reconstructs qtype chains from current raw diagnostics", () => {
   const view = buildDebugViewModel(baseReport());
 
@@ -216,6 +261,66 @@ test("DNS client response summary extracts RCODE and answer data from Technitium
       answerCount: 1,
       answers: ["example.com A 192.0.2.10"],
       warning: null,
+      extendedErrors: [],
     },
   );
+});
+
+test("DNS client response summary extracts and deduplicates Technitium EDEs", () => {
+  const summary = summarizeDnsClientResponse(dnssecFailureDnsClientResponse());
+
+  assert.equal(summary.ok, false);
+  assert.equal(summary.rcode, "ServerFailure");
+  assert.deepEqual(summary.extendedErrors, [
+    {
+      code: "SignatureExpired",
+      label: "Signature Expired",
+      text: "dnssec-broken.example.test DNSKEY IN",
+      source: "response",
+    },
+    {
+      code: "NoReachableAuthority",
+      label: "No Reachable Authority",
+      text: "https://resolver.example/dns-query returned RCODE=ServerFailure for ns1.example.test. A IN",
+      source: "response",
+    },
+  ]);
+});
+
+test("deep DNS diagnosis promotes SignatureExpired above generic SERVFAIL", () => {
+  const response = summarizeDnsClientResponse(dnssecFailureDnsClientResponse());
+  const diagnosis = summarizeDeepDnsDiagnosis([
+    {
+      resolverId: "this-server",
+      resolverLabel: "This Technitium server",
+      qtype: "A",
+      ...response,
+    },
+  ]);
+
+  assert.deepEqual(diagnosis, {
+    status: "error",
+    title: "DNSSEC validation failure",
+    detail: "Signature Expired — dnssec-broken.example.test DNSKEY IN",
+    kind: "confirmed",
+  });
+});
+
+test("short summary includes precise Deep DNS EDE diagnosis", () => {
+  const report = baseReport();
+  const response = summarizeDnsClientResponse(dnssecFailureDnsClientResponse());
+  report.technitium.deepDnsTest = {
+    results: [
+      {
+        resolverId: "this-server",
+        resolverLabel: "This Technitium server",
+        qtype: "A",
+        ...response,
+      },
+    ],
+  };
+
+  const summary = formatShortDebugSummary(buildDebugViewModel(report), report);
+  assert.match(summary, /Deep DNS: DNSSEC validation failure/);
+  assert.match(summary, /Signature Expired — dnssec-broken\.example\.test DNSKEY IN/);
 });
